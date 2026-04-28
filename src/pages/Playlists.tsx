@@ -47,36 +47,39 @@ export default function Playlists() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Playlists</h1>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Playlists</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Export the tracks currently loaded in your library as a portable playlist.</p>
+        </div>
         <button
           onClick={handleExportPlaylist}
           disabled={files.length === 0}
-          className="px-4 py-2 bg-primary text-primary-foreground rounded-md shadow hover:bg-primary/90 disabled:opacity-50"
+          className="rounded-xl bg-[linear-gradient(135deg,hsl(var(--primary-color)),hsl(var(--primary-dark)))] px-4 py-2 font-semibold text-primary-foreground shadow-[var(--panel-shadow)] transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-[var(--panel-shadow-lg)] disabled:opacity-50"
         >
           Export All as .m3u8
         </button>
       </div>
       
       {saveMessage && (
-        <div className="p-4 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 rounded-md">
+        <div className="status-success rounded-xl border border-border px-4 py-3 shadow-[var(--panel-shadow)]">
           {saveMessage}
         </div>
       )}
 
       {files.length === 0 ? (
-        <div className="rounded-md border p-8 text-center bg-card">
+        <div className="panel flex flex-col items-center rounded-xl p-8 text-center">
           <h3 className="text-lg font-medium text-card-foreground">No audio files loaded</h3>
           <p className="text-sm text-muted-foreground mt-2">
             Open a folder in the Library tab first to generate a playlist.
           </p>
         </div>
       ) : (
-        <div className="rounded-md border bg-card p-4 space-y-4">
+        <div className="panel space-y-4 rounded-xl p-5">
           <h3 className="text-lg font-medium">Generate Playlist from Library</h3>
           <p className="text-sm text-muted-foreground">
             You currently have {files.length} audio file(s) loaded. You can export them into a standard .m3u8 playlist file that can be opened in other media players (like VLC, Winamp, etc.).
           </p>
-          <div className="max-h-60 overflow-y-auto border rounded bg-muted/30 p-2">
+          <div className="max-h-60 overflow-y-auto rounded-xl border border-border/80 bg-background/80 p-3 shadow-[var(--panel-shadow)]">
             <pre className="text-xs text-muted-foreground whitespace-pre-wrap">
               #EXTM3U{"\n"}
               {files.slice(0, 5).map(f => `#EXTINF:-1,${f.name.replace('.mp3', '')}\n${f.path}\n`).join('')}

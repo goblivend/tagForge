@@ -236,11 +236,14 @@ export default function Library() {
   return (
     <div className="space-y-6 h-full flex flex-col relative" onMouseMove={(e) => { if(isDragging) setLeftWidth(e.clientX - 20) }} onMouseUp={() => setIsDragging(false)} onMouseLeave={() => setIsDragging(false)}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center justify-between shrink-0">
-        <h1 className="text-3xl font-bold tracking-tight">Library</h1>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Library</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Open a music folder, inspect tracks, and apply metadata changes without leaving the browser.</p>
+        </div>
         <div className="flex items-center gap-2 relative">
           <button
             onClick={() => setShowShortcuts(true)}
-            className="px-3 py-1.5 flex items-center gap-2 text-sm bg-accent text-accent-foreground rounded-md hover:bg-accent/80 transition-colors"
+            className="flex items-center gap-2 rounded-xl border border-border/70 bg-card/85 px-3 py-2 text-sm font-medium text-muted-foreground shadow-[var(--panel-shadow)] transition-[transform,background-color,color] hover:-translate-y-0.5 hover:bg-accent/80 hover:text-accent-foreground"
           >
              <Keyboard size={16} /> Shortcuts
           </button>
@@ -248,22 +251,22 @@ export default function Library() {
           {folderHandle && (
             <button
               onClick={() => setShowColumnConfig(!showColumnConfig)}
-              className="px-3 py-1.5 flex items-center gap-2 text-sm bg-accent text-accent-foreground rounded-md hover:bg-accent/80 transition-colors"
+              className="flex items-center gap-2 rounded-xl border border-border/70 bg-card/85 px-3 py-2 text-sm font-medium text-muted-foreground shadow-[var(--panel-shadow)] transition-[transform,background-color,color] hover:-translate-y-0.5 hover:bg-accent/80 hover:text-accent-foreground"
             >
                <Settings2 size={16} /> Columns
             </button>
           )}
 
           {showColumnConfig && (
-            <div className="absolute top-10 right-32 w-48 bg-popover border shadow-md rounded-md p-2 z-50">
+            <div className="panel absolute right-32 top-12 z-50 w-52 rounded-xl p-2">
                <div className="text-xs font-semibold uppercase text-muted-foreground mb-2 px-2">Show Columns</div>
                {COLUMNS.map(col => (
-                 <label key={col.key} className="flex items-center gap-2 px-2 py-1.5 hover:bg-accent rounded-sm cursor-pointer">
+                 <label key={col.key} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-accent/80">
                    <input 
                      type="checkbox" 
                      checked={!hiddenColumns[col.key]}
                      onChange={() => toggleColumn(col.key)}
-                     className="rounded border-muted bg-background"
+                     className="rounded-md"
                    />
                    <span className="text-sm">{col.label}</span>
                  </label>
@@ -274,7 +277,7 @@ export default function Library() {
           {folderHandle && (
             <button title="Shortcut: CTRL+O" 
               onClick={handleOpenFolder}
-              className="px-3 py-1.5 text-sm bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 transition-colors"
+              className="rounded-xl bg-[linear-gradient(135deg,hsl(var(--primary-color)),hsl(var(--primary-dark)))] px-4 py-2 text-sm font-semibold text-primary-foreground shadow-[var(--panel-shadow)] transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-[var(--panel-shadow-lg)]"
             >
               Change Folder
             </button>
@@ -283,27 +286,27 @@ export default function Library() {
       </div>
       
       {!folderHandle ? (
-        <div className="rounded-md border p-8 text-center bg-card flex-1 flex flex-col items-center justify-center">
+        <div className="panel-strong flex flex-1 flex-col items-center justify-center rounded-2xl p-8 text-center">
           <h3 className="text-lg font-medium text-card-foreground">No folder selected</h3>
           <p className="text-sm text-muted-foreground mt-2 mb-4">
             Open a folder to start editing metadata.
           </p>
           <button title="Shortcut: CTRL+O" 
             onClick={handleOpenFolder}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-md shadow hover:bg-primary/90 transition-colors"
+            className="rounded-xl bg-[linear-gradient(135deg,hsl(var(--primary-color)),hsl(var(--primary-dark)))] px-4 py-2 font-semibold text-primary-foreground shadow-[var(--panel-shadow)] transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-[var(--panel-shadow-lg)]"
           >
             Open Folder
           </button>
         </div>
       ) : (
         <div className="flex flex-1 gap-6 min-h-0">
-          <div className="h-full flex w-full rounded-md border text-sm overflow-hidden bg-card">
+          <div className="panel-strong flex h-full w-full overflow-hidden rounded-2xl text-sm">
             
             <div className="flex h-full w-full">
                 {/* Left Panel: CSV-like Table */}
-                <div className="border-r h-full flex flex-col overflow-hidden bg-background shrink-0" style={{ width: Math.max(250, leftWidth) + 'px' }}>
+                <div className="flex h-full shrink-0 flex-col overflow-hidden border-r border-border/70 bg-background/80" style={{ width: Math.max(250, leftWidth) + 'px' }}>
                   <div className="h-full flex flex-col">
-                    <div className="p-3 border-b shrink-0 bg-muted/20 flex justify-between items-center text-xs text-muted-foreground uppercase font-semibold select-none">
+                    <div className="flex shrink-0 items-center justify-between border-b border-border/70 bg-muted/35 p-3 text-xs font-semibold uppercase text-muted-foreground select-none">
                       <div className="flex-1 min-w-[200px] flex items-center gap-2 cursor-pointer hover:text-foreground" onClick={() => handleSort('filename')}>
                         <span title={folderHandle.name}>{folderHandle.name} ({files.length}) {getSortIcon('filename')}</span>
                       </div>
@@ -314,7 +317,7 @@ export default function Library() {
                       {!hiddenColumns['year'] && <div className="w-[60px] shrink-0 pl-2 border-l cursor-pointer hover:text-foreground" onClick={() => handleSort('year')}>Year {getSortIcon('year')}</div>}
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-1 bg-background isolate">
+                    <div className="flex-1 overflow-y-auto bg-background/70 p-1 isolate">
                       {isScanning ? (
                         <div className="p-4 text-center text-sm text-muted-foreground">Scanning...</div>
                       ) : sortedFiles.length === 0 ? (
@@ -325,17 +328,17 @@ export default function Library() {
                             <div 
                               key={file.path} 
                               onClick={() => handleSelectFile(file)}
-                              className={`flex items-center p-1.5 rounded-sm cursor-pointer transition-colors group text-xs ${
+                              className={`group flex cursor-pointer items-center rounded-lg p-1.5 text-xs transition-[transform,background-color,color,box-shadow] ${
                                 selectedFile?.path === file.path 
-                                  ? 'bg-primary/20 text-foreground font-medium' 
+                                  ? 'bg-[linear-gradient(135deg,hsl(var(--primary-color)/0.18),hsl(var(--accent-color)/0.14))] text-foreground font-medium shadow-[var(--panel-shadow)]' 
                                   : file.isEdited 
-                                    ? 'bg-green-500/5 text-foreground hover:bg-accent/80' 
-                                    : 'hover:bg-accent text-muted-foreground'
+                                    ? 'text-foreground hover:bg-accent/80'
+                                    : 'text-muted-foreground hover:bg-accent/80 hover:text-foreground'
                               }`}
                             >
                               <div className="flex-1 min-w-[200px] truncate flex items-center gap-1.5">
                                 {file.isEdited ? (
-                                  <CheckCircle2 size={14} className="text-green-500 shrink-0" />
+                                  <CheckCircle2 size={14} className="shrink-0" style={{ color: "hsl(var(--success-color))" }} />
                                 ) : (
                                   <span className="w-3.5 h-3.5 inline-block shrink-0"></span> // spacer
                                 )}
@@ -355,14 +358,14 @@ export default function Library() {
                 </div>
 
               <div 
-                className="w-2 bg-muted/50 hover:bg-primary/50 transition-colors flex flex-col items-center justify-center cursor-col-resize shrink-0 border-x select-none"
+                className="flex w-2 shrink-0 cursor-col-resize flex-col items-center justify-center border-x border-border/70 bg-muted/45 transition-colors hover:bg-primary/20 select-none"
                 onMouseDown={(e) => { e.preventDefault(); setIsDragging(true); }}
               >
-                <div className="h-8 w-1 bg-border rounded-full" />
+                <div className="h-10 w-1 rounded-full bg-border" />
               </div>
 
                 {/* Right Panel: Editor */}
-                <div className="flex flex-col h-full flex-1 bg-card overflow-y-auto min-w-[300px]">
+                <div className="flex h-full min-w-[300px] flex-1 flex-col overflow-y-auto bg-card/95">
                   {!selectedFile ? (
                     <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
                       Select a file to edit
@@ -373,7 +376,7 @@ export default function Library() {
                     </div>
                   ) : metadata ? (
                     <div className="flex-1 flex flex-col min-h-0">
-                      <div className="p-4 border-b shrink-0 flex items-center justify-between bg-muted/10 sticky top-0 z-10 backdrop-blur-sm">
+                      <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-border/70 bg-card/90 p-4 backdrop-blur-sm">
                         <div className="min-w-0 pr-4">
                           <h2 className="text-base font-semibold truncate bg-transparent border-none appearance-none" title={selectedFile.name}>{selectedFile.name}</h2>
                           <p className="text-xs text-muted-foreground mt-0.5 truncate">{selectedFile.path}</p>
@@ -383,14 +386,14 @@ export default function Library() {
                       </div>
                       
                       <div className="flex-1 p-4 pb-12 content-visibility-auto">
-                        <form onSubmit={handleSave} className="space-y-4 max-w-[500px] mx-auto pb-4">
+                        <form onSubmit={handleSave} className="mx-auto max-w-[500px] space-y-4 pb-4">
                           <div className="space-y-1.5">
                           <label className="text-sm font-medium text-foreground">Title</label>
                           <input 
                             type="text" 
                             value={metadata.title || ''}
                             onChange={(e) => handleChange('title', e.target.value)}
-                            className="w-full px-3 py-2 border rounded-md bg-background text-foreground"
+                            className="w-full rounded-xl px-3 py-2"
                           />
                         </div>
                         
@@ -401,7 +404,7 @@ export default function Library() {
                             list="artists-list"
                             value={metadata.artist || ''}
                             onChange={(e) => handleChange('artist', e.target.value)}
-                            className="w-full px-3 py-2 border rounded-md bg-background text-foreground"
+                            className="w-full rounded-xl px-3 py-2"
                           />
                           <datalist id="artists-list">
                             {recentArtists.map(a => <option key={a} value={a} />)}
@@ -415,7 +418,7 @@ export default function Library() {
                             list="albums-list"
                             value={metadata.album || ''}
                             onChange={(e) => handleChange('album', e.target.value)}
-                            className="w-full px-3 py-2 border rounded-md bg-background text-foreground"
+                            className="w-full rounded-xl px-3 py-2"
                           />
                           <datalist id="albums-list">
                             {recentAlbums.map(a => <option key={a} value={a} />)}
@@ -429,7 +432,7 @@ export default function Library() {
                               type="text" 
                               value={metadata.date || ''}
                               onChange={(e) => handleChange('date', e.target.value)}
-                              className="w-full px-3 py-2 border rounded-md bg-background text-foreground"
+                              className="w-full rounded-xl px-3 py-2"
                             />
                           </div>
                           <div className="space-y-2">
@@ -439,7 +442,7 @@ export default function Library() {
                               list="genres-list"
                               value={metadata.genre || ''}
                               onChange={(e) => handleChange('genre', e.target.value)}
-                              className="w-full px-3 py-2 border rounded-md bg-background text-foreground"
+                              className="w-full rounded-xl px-3 py-2"
                             />
                             <datalist id="genres-list">
                               {recentGenres.map(g => <option key={g} value={g} />)}
@@ -447,11 +450,11 @@ export default function Library() {
                           </div>
                         </div>
 
-                        <div className="space-y-4 pt-4 border-t">
+                        <div className="space-y-4 border-t border-border/70 pt-4">
                           <label className="text-sm font-medium text-foreground flex items-center justify-between gap-4">
                             <span>Cover Art</span>
                             <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-                              <button type="button" title="Use cover from an existing file in this folder (same album first)" className="p-1 px-2 hover:bg-accent rounded-md flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground border border-border/50 transition-colors" onClick={async () => {
+                              <button type="button" title="Use cover from an existing file in this folder (same album first)" className="flex items-center gap-1 rounded-lg border border-border/70 bg-background/80 p-1 px-2 text-xs text-muted-foreground transition-[transform,background-color,color] hover:-translate-y-0.5 hover:bg-accent/80 hover:text-foreground" onClick={async () => {
                                  if (!metadata) return;
                                  const cachedSameAlbum = files.find(f => f.metadata?.album === metadata.album && f.metadata?.picture && f.name !== selectedFile?.name);
                                  if (cachedSameAlbum && cachedSameAlbum.metadata?.picture) {
@@ -478,7 +481,7 @@ export default function Library() {
                                 <Search size={14} /> Find
                               </button>
                               
-                              <label className="p-1 px-2 hover:bg-accent rounded-md flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer border border-border/50 transition-colors" title="Upload an image file">
+                              <label className="flex cursor-pointer items-center gap-1 rounded-lg border border-border/70 bg-background/80 p-1 px-2 text-xs text-muted-foreground transition-[transform,background-color,color] hover:-translate-y-0.5 hover:bg-accent/80 hover:text-foreground" title="Upload an image file">
                                 <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
                                    const file = e.target.files?.[0];
                                    if(!file) return;
@@ -488,7 +491,7 @@ export default function Library() {
                                 <UploadCloud size={14} /> Upload
                               </label>
                               
-                              <button type="button" className="p-1 px-2 hover:bg-accent rounded-md flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground border border-border/50 transition-colors" title="Add image from URL" onClick={async () => {
+                              <button type="button" className="flex items-center gap-1 rounded-lg border border-border/70 bg-background/80 p-1 px-2 text-xs text-muted-foreground transition-[transform,background-color,color] hover:-translate-y-0.5 hover:bg-accent/80 hover:text-foreground" title="Add image from URL" onClick={async () => {
                                   const url = prompt("Enter image URL:");
                                   if (!url) return;
                                   try {
@@ -504,7 +507,7 @@ export default function Library() {
                               </button>
                             </div>
                           </label>
-                          <div className="border rounded-md aspect-square max-w-[250px] mx-auto bg-muted/20 flex flex-col items-center justify-center overflow-hidden relative group w-full mb-4 shadow-sm">
+                          <div className="group relative mb-4 flex aspect-square w-full max-w-[250px] items-center justify-center overflow-hidden rounded-2xl border border-border/70 bg-muted/30 shadow-[var(--panel-shadow)]">
                               {metadata.picture ? (
                                  <>
                                    <img 
@@ -513,12 +516,12 @@ export default function Library() {
                                      className="w-full h-full object-cover" 
                                      onLoad={(e) => URL.revokeObjectURL((e.target as HTMLImageElement).src)}
                                    />
-                                   <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                   <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
                                      <button type="button" onClick={() => {
                                         const obj = { ...metadata };
                                         delete obj.picture;
                                         setMetadata(obj as any);
-                                     }} className="px-3 py-1.5 bg-red-500 text-white rounded shadow text-sm font-medium hover:bg-red-600 transition-colors flex items-center gap-2">
+                                     }} className="flex items-center gap-2 rounded-xl bg-red-500 px-3 py-1.5 text-sm font-medium text-white shadow-[var(--panel-shadow)] transition-[transform,background-color] hover:-translate-y-0.5 hover:bg-red-600">
                                        <X size={16} /> Remove Cover
                                      </button>
                                    </div>
@@ -532,11 +535,11 @@ export default function Library() {
                           </div>
                         </div>
 
-                        <div className="pt-4 pb-4 flex gap-4 items-center border-t sticky bottom-0 bg-card z-10 shadow-[0_-10px_10px_-10px_rgba(0,0,0,0.1)]">
+                        <div className="sticky bottom-0 z-10 flex items-center gap-4 border-t border-border/70 bg-card/95 pb-4 pt-4 shadow-[0_-10px_20px_-14px_rgba(15,23,42,0.28)]">
                           <button title="Shortcut: CTRL+S"
                             type="submit" 
                             disabled={isSaving}
-                            className="px-4 py-2 bg-primary text-primary-foreground rounded-md shadow hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                            className="rounded-xl bg-[linear-gradient(135deg,hsl(var(--primary-color)),hsl(var(--primary-dark)))] px-4 py-2 font-semibold text-primary-foreground shadow-[var(--panel-shadow)] transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-[var(--panel-shadow-lg)] disabled:opacity-50"
                           >
                             {isSaving ? 'Saving...' : 'Save Metadata'}
                           </button>
@@ -545,21 +548,21 @@ export default function Library() {
                             title="Shortcut: Escape"
                             onClick={() => handleSelectFile(selectedFile)}
                             disabled={isSaving}
-                            className="px-4 py-2 border bg-transparent text-foreground rounded-md hover:bg-accent disabled:opacity-50 transition-colors"
+                            className="rounded-xl border border-border/70 bg-background/80 px-4 py-2 font-medium text-foreground shadow-[var(--panel-shadow)] transition-[transform,background-color] hover:-translate-y-0.5 hover:bg-accent/80 disabled:opacity-50"
                           >
                             Discard
                           </button>
                           {saveMessage && (
-                            <span className={`text-sm ml-2 ${saveMessage.includes('Error') || saveMessage.includes('Failed') ? 'text-red-500' : 'text-green-500'}`}>
+                            <span className={`ml-2 text-sm ${saveMessage.includes('Error') || saveMessage.includes('Failed') ? 'text-red-500' : ''}`} style={saveMessage.includes('Error') || saveMessage.includes('Failed') ? undefined : { color: "hsl(var(--success-color))" }}>
                               {saveMessage}
                             </span>
                           )}
                         </div>
                       </form>
 
-                      <div className="mt-4 pt-6 border-t max-w-lg mx-auto">
+                      <div className="mx-auto mt-4 max-w-lg border-t border-border/70 pt-6">
                         <h3 className="text-md font-medium text-foreground mb-4">Rename File</h3>
-                        <div className="p-4 bg-muted/30 border rounded-md space-y-4">
+                        <div className="space-y-4 rounded-2xl border border-border/80 bg-muted/30 p-4 shadow-[var(--panel-shadow)]">
                           <div>
                             <p className="text-xs text-muted-foreground uppercase font-semibold mb-1">Current Name</p>
                             <p className="text-sm font-mono truncate">{selectedFile.name}</p>
@@ -574,12 +577,12 @@ export default function Library() {
                               return (
                                 <div 
                                   key={preset.id} 
-                                  className={`border p-3 rounded-md flex flex-col gap-2 transition-colors ${
+                                  className={`flex flex-col gap-2 rounded-xl border p-3 transition-[transform,background-color,border-color,box-shadow] ${
                                     isSame 
-                                    ? 'opacity-50 cursor-not-allowed bg-muted/50' 
+                                      ? 'opacity-50 cursor-not-allowed bg-muted/50' 
                                     : isSaving 
                                       ? 'opacity-50 cursor-wait bg-background' 
-                                      : 'cursor-pointer hover:bg-accent hover:border-accent-foreground/50 bg-background shadow-sm hover:shadow'
+                                      : 'cursor-pointer bg-background/85 shadow-[var(--panel-shadow)] hover:-translate-y-0.5 hover:border-primary/30 hover:bg-accent/80 hover:shadow-[var(--panel-shadow-lg)]'
                                   }`}
                                   onClick={async () => {
                                     if (isSame || isSaving || !preview) return;
@@ -623,7 +626,7 @@ export default function Library() {
                                     <span className="font-semibold text-foreground/80">{preset.name}</span>
                                     <span className="text-muted-foreground font-mono text-[10px]">{preset.format}</span>
                                   </div>
-                                  <div className="text-sm font-mono truncate text-green-600 dark:text-green-400">
+                                  <div className="truncate text-sm font-mono" style={{ color: "hsl(var(--success-color))" }}>
                                     {preview}
                                   </div>
                                 </div>
@@ -644,11 +647,11 @@ export default function Library() {
       )}
 
       {showShortcuts && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-           <div className="bg-card w-full max-w-lg border rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
-              <div className="p-4 border-b flex justify-between items-center bg-muted/30">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/82 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+           <div className="panel-strong flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl">
+              <div className="flex items-center justify-between border-b border-border/70 bg-muted/35 p-4">
                  <h2 className="text-xl font-bold flex items-center gap-2"><Keyboard size={20}/> Keyboard Shortcuts</h2>
-                 <button onClick={() => setShowShortcuts(false)} className="p-1 hover:bg-muted rounded-full transition-colors">
+                 <button onClick={() => setShowShortcuts(false)} className="rounded-full p-1 transition-colors hover:bg-accent/80">
                    <X size={20} />
                  </button>
               </div>

@@ -150,7 +150,7 @@ export function AudioPlayer() {
   }
 
   return (
-    <div className="flex items-center justify-between w-full h-full gap-4">
+    <div className="flex h-full w-full items-center justify-between gap-4">
       {/* Hidden audio element */}
       {audioUrl && (
         <audio
@@ -172,7 +172,7 @@ export function AudioPlayer() {
 
       {/* Track Info */}
       <div className="w-1/4 min-w-[150px] truncate">
-        <div className="font-medium text-sm truncate" title={selectedFile.name}>
+        <div className="truncate text-sm font-semibold" title={selectedFile.name}>
           {selectedFile.name}
         </div>
         <div className="text-xs text-muted-foreground truncate">
@@ -181,20 +181,20 @@ export function AudioPlayer() {
       </div>
 
       {/* Controls & Timeline */}
-      <div className="flex-1 max-w-2xl flex flex-col items-center justify-center gap-1">
+      <div className="flex max-w-2xl flex-1 flex-col items-center justify-center gap-2">
         <div className="flex items-center gap-4">
           <button 
             onClick={() => {
               const idx = selectedFile ? files.findIndex(f => f.path === selectedFile.path) : -1;
               if (idx > 0) setSelectedFile(files[idx - 1]);
             }}
-            className="text-muted-foreground hover:text-foreground transition-colors"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-transparent text-muted-foreground transition-[transform,color,background-color] hover:-translate-y-0.5 hover:bg-accent/80 hover:text-foreground"
           >
             <SkipBack className="h-5 w-5" />
           </button>
           <button 
             onClick={togglePlay}
-            className="w-8 h-8 flex items-center justify-center bg-primary text-primary-foreground rounded-full hover:scale-105 transition-transform"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-[linear-gradient(135deg,hsl(var(--primary-color)),hsl(var(--primary-dark)))] text-primary-foreground shadow-[var(--panel-shadow)] transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-[var(--panel-shadow-lg)]"
           >
             {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
           </button>
@@ -203,7 +203,7 @@ export function AudioPlayer() {
               const idx = selectedFile ? files.findIndex(f => f.path === selectedFile.path) : -1;
               if (idx !== -1 && idx < files.length - 1) setSelectedFile(files[idx + 1]);
             }}
-            className="text-muted-foreground hover:text-foreground transition-colors"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-transparent text-muted-foreground transition-[transform,color,background-color] hover:-translate-y-0.5 hover:bg-accent/80 hover:text-foreground"
           >
             <SkipForward className="h-5 w-5" />
           </button>
@@ -217,7 +217,7 @@ export function AudioPlayer() {
             max={duration || 100}
             value={currentTime}
             onChange={handleSeek}
-            className="flex-1 h-1 bg-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:rounded-full"
+            className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full border-0 bg-secondary/90 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-[var(--panel-shadow)]"
           />
           <span>{formatTime(duration)}</span>
         </div>
@@ -225,7 +225,7 @@ export function AudioPlayer() {
 
       {/* Volume / Extra Controls */}
       <div className="w-1/4 min-w-[150px] flex items-center justify-end gap-2">
-        <button onClick={toggleMute} className="text-muted-foreground hover:text-foreground">
+        <button onClick={toggleMute} className="flex h-9 w-9 items-center justify-center rounded-full border border-transparent text-muted-foreground transition-[transform,color,background-color] hover:-translate-y-0.5 hover:bg-accent/80 hover:text-foreground">
           {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
         </button>
         <input
@@ -240,7 +240,7 @@ export function AudioPlayer() {
             if (audioRef.current) audioRef.current.volume = v;
             if (v > 0 && isMuted) setIsMuted(false);
           }}
-          className="w-24 h-1 bg-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2 [&::-webkit-slider-thumb]:h-2 [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:rounded-full"
+          className="h-1.5 w-24 cursor-pointer appearance-none rounded-full border-0 bg-secondary/90 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-[var(--panel-shadow)]"
         />
       </div>
     </div>

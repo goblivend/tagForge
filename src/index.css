@@ -1,1 +1,295 @@
-@import "tailwindcss"; @theme { --color-border: hsl(var(--border)); --color-input: hsl(var(--input)); --color-ring: hsl(var(--ring)); --color-background: hsl(var(--background)); --color-foreground: hsl(var(--foreground)); --color-primary: hsl(var(--primary)); --color-primary-foreground: hsl(var(--primary-foreground)); --color-secondary: hsl(var(--secondary)); --color-secondary-foreground: hsl(var(--secondary-foreground)); --color-destructive: hsl(var(--destructive)); --color-destructive-foreground: hsl(var(--destructive-foreground)); --color-muted: hsl(var(--muted)); --color-muted-foreground: hsl(var(--muted-foreground)); --color-accent: hsl(var(--accent)); --color-accent-foreground: hsl(var(--accent-foreground)); --color-popover: hsl(var(--popover)); --color-popover-foreground: hsl(var(--popover-foreground)); --color-card: hsl(var(--card)); --color-card-foreground: hsl(var(--card-foreground)); --radius-lg: var(--radius); --radius-md: calc(var(--radius) - 2px); --radius-sm: calc(var(--radius) - 4px); } @layer base { :root { --background: 0 0% 100%; --foreground: 222.2 84% 4.9%; --card: 0 0% 100%; --card-foreground: 222.2 84% 4.9%; --popover: 0 0% 100%; --popover-foreground: 222.2 84% 4.9%; --primary: 222.2 47.4% 11.2%; --primary-foreground: 210 40% 98%; --secondary: 210 40% 96.1%; --secondary-foreground: 222.2 47.4% 11.2%; --muted: 210 40% 96.1%; --muted-foreground: 215.4 16.3% 46.9%; --accent: 210 40% 96.1%; --accent-foreground: 222.2 47.4% 11.2%; --destructive: 0 84.2% 60.2%; --destructive-foreground: 210 40% 98%; --border: 214.3 31.8% 91.4%; --input: 214.3 31.8% 91.4%; --ring: 222.2 84% 4.9%; --radius: 0.5rem; } .dark { --background: 222.2 84% 4.9%; --foreground: 210 40% 98%; --card: 222.2 84% 4.9%; --card-foreground: 210 40% 98%; --popover: 222.2 84% 4.9%; --popover-foreground: 210 40% 98%; --primary: 210 40% 98%; --primary-foreground: 222.2 47.4% 11.2%; --secondary: 217.2 32.6% 17.5%; --secondary-foreground: 210 40% 98%; --muted: 217.2 32.6% 17.5%; --muted-foreground: 215 20.2% 65.1%; --accent: 217.2 32.6% 17.5%; --accent-foreground: 210 40% 98%; --destructive: 0 62.8% 30.6%; --destructive-foreground: 210 40% 98%; --border: 217.2 32.6% 17.5%; --input: 217.2 32.6% 17.5%; --ring: 212.7 26.8% 83.9%; } } @layer base { * { @apply border-border; } body { @apply bg-background text-foreground; } }
+@import "tailwindcss";
+
+@theme {
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 6px);
+  --shadow-panel: var(--panel-shadow);
+  --shadow-panel-lg: var(--panel-shadow-lg);
+}
+
+@layer base {
+  :root {
+    --primary-color: 217 91% 60%;
+    --primary-dark: 221 83% 53%;
+    --accent-color: 189 94% 43%;
+    --text-dark: 215 28% 17%;
+    --text-light: 215 16% 47%;
+    --text-white: 0 0% 100%;
+    --bg-primary: 0 0% 100%;
+    --bg-secondary: 210 40% 98%;
+    --bg-elevated: 210 40% 99%;
+    --bg-dark: 222 47% 11%;
+    --border-color: 214 32% 91%;
+    --input-color: 214 32% 91%;
+    --ring-color: 217 91% 60%;
+    --success-color: 160 84% 39%;
+    --success-surface: 152 76% 96%;
+    --warning-surface: 48 100% 96%;
+    --danger-surface: 0 86% 97%;
+    --overlay-dark-75: 220 69% 9% / 0.75;
+    --overlay-dark-85: 220 69% 9% / 0.85;
+    --overlay-dark-95: 220 69% 9% / 0.95;
+    --sun-color: 46 100% 67%;
+    --shadow-1: 0 0% 0% / 0.1;
+    --shadow-2: 0 0% 0% / 0.06;
+    --shadow-3: 0 0% 0% / 0.08;
+    --shadow-inset: 0 0% 0% / 0.15;
+    --radius: 0.75rem;
+    --panel-shadow: 0 4px 6px -1px hsl(var(--shadow-1)), 0 2px 4px -1px hsl(var(--shadow-2));
+    --panel-shadow-lg: 0 20px 25px -5px hsl(var(--shadow-1)), 0 10px 10px -5px hsl(var(--shadow-2));
+
+    --background: var(--bg-primary);
+    --foreground: var(--text-dark);
+    --card: var(--bg-primary);
+    --card-foreground: var(--text-dark);
+    --popover: var(--bg-primary);
+    --popover-foreground: var(--text-dark);
+    --primary: var(--primary-color);
+    --primary-foreground: var(--text-white);
+    --secondary: 210 40% 96%;
+    --secondary-foreground: var(--text-dark);
+    --muted: var(--bg-secondary);
+    --muted-foreground: var(--text-light);
+    --accent: 210 100% 97%;
+    --accent-foreground: var(--text-dark);
+    --destructive: 0 72% 51%;
+    --destructive-foreground: var(--text-white);
+    --border: var(--border-color);
+    --input: var(--input-color);
+    --ring: var(--ring-color);
+  }
+
+  :root[data-theme="dark"] {
+    --primary-color: 213 94% 68%;
+    --primary-dark: 217 91% 60%;
+    --accent-color: 189 94% 43%;
+    --text-dark: 213 53% 94%;
+    --text-light: 214 32% 83%;
+    --text-white: 0 0% 100%;
+    --bg-primary: 220 70% 9%;
+    --bg-secondary: 216 49% 10%;
+    --bg-elevated: 217 43% 14%;
+    --bg-dark: 222 84% 5%;
+    --border-color: 0 0% 100% / 0.08;
+    --input-color: 0 0% 100% / 0.1;
+    --ring-color: 213 94% 68%;
+    --success-color: 160 84% 48%;
+    --success-surface: 160 100% 10% / 0.32;
+    --warning-surface: 48 100% 12% / 0.4;
+    --danger-surface: 0 70% 20% / 0.4;
+    --shadow-dark-1: 222 84% 5% / 0.6;
+    --shadow-dark-2: 222 84% 5% / 0.72;
+    --panel-shadow: 0 6px 18px hsl(var(--shadow-dark-1));
+    --panel-shadow-lg: 0 30px 40px hsl(var(--shadow-dark-2));
+
+    --background: 217 56% 11%;
+    --foreground: var(--text-dark);
+    --card: 220 54% 12%;
+    --card-foreground: var(--text-dark);
+    --popover: 220 54% 12%;
+    --popover-foreground: var(--text-dark);
+    --primary: var(--primary-color);
+    --primary-foreground: 220 70% 9%;
+    --secondary: 217 38% 18%;
+    --secondary-foreground: var(--text-dark);
+    --muted: 217 35% 16%;
+    --muted-foreground: var(--text-light);
+    --accent: 217 46% 18%;
+    --accent-foreground: var(--text-dark);
+    --destructive: 0 84% 68%;
+    --destructive-foreground: 220 70% 9%;
+    --border: var(--border-color);
+    --input: var(--input-color);
+    --ring: var(--ring-color);
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background:
+      radial-gradient(circle at top right, hsl(var(--primary-color) / 0.08), transparent 28%),
+      linear-gradient(135deg, hsl(var(--bg-secondary)) 0%, hsl(var(--bg-primary)) 40%, hsl(var(--bg-primary)) 100%);
+    min-height: 100vh;
+  }
+
+  :root[data-theme="dark"] body {
+    background:
+      radial-gradient(circle at top right, hsl(var(--primary-color) / 0.13), transparent 28%),
+      linear-gradient(135deg, hsl(var(--bg-secondary)) 0%, hsl(var(--bg-primary)) 40%, hsl(var(--bg-primary)) 100%);
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  input,
+  textarea,
+  select {
+    @apply border-input bg-background text-foreground outline-none transition-[border-color,box-shadow,background-color];
+    box-shadow: 0 1px 2px hsl(var(--shadow-2));
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: hsl(var(--muted-foreground));
+  }
+
+  input:focus,
+  textarea:focus,
+  select:focus {
+    border-color: hsl(var(--ring));
+    box-shadow: 0 0 0 4px hsl(var(--primary-color) / 0.14);
+  }
+
+  input[type="checkbox"] {
+    accent-color: hsl(var(--primary-color));
+  }
+}
+
+@layer components {
+  .app-shell {
+    @apply bg-background/70 text-foreground;
+    backdrop-filter: blur(20px);
+  }
+
+  .gradient-text {
+    background: linear-gradient(135deg, hsl(var(--primary-color)), hsl(var(--accent-color)));
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+  }
+
+  .theme-switch {
+    @apply inline-flex items-center justify-center;
+  }
+
+  .theme-switch .switch {
+    width: 52px;
+    height: 28px;
+    border-radius: 999px;
+    position: relative;
+    display: inline-block;
+    background: hsl(var(--border));
+    box-shadow: inset 0 1px 2px hsl(var(--shadow-inset));
+    transition: background 200ms ease;
+  }
+
+  .theme-switch .icon {
+    position: absolute;
+    top: 50%;
+    width: 16px;
+    height: 16px;
+    transform: translateY(-50%);
+    color: hsl(var(--muted-foreground));
+    transition: opacity 180ms ease, color 180ms ease, filter 180ms ease;
+    opacity: 0.92;
+    z-index: 3;
+  }
+
+  .theme-switch .sun {
+    left: 6px;
+  }
+
+  .theme-switch .moon {
+    right: 6px;
+  }
+
+  .theme-switch .switch::after {
+    content: "";
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    background: hsl(var(--text-white));
+    z-index: 2;
+    transition: transform 200ms ease, background 200ms ease;
+  }
+
+  :root[data-theme="dark"] .theme-switch .switch {
+    background: linear-gradient(135deg, hsl(var(--primary-color)), hsl(var(--primary-dark)));
+  }
+
+  :root[data-theme="dark"] .theme-switch .switch::after {
+    transform: translateX(24px);
+  }
+
+  :root[data-theme="dark"] .theme-switch .sun {
+    color: hsl(var(--sun-color));
+    opacity: 1;
+    filter: drop-shadow(0 6px 12px hsl(var(--sun-color) / 0.24));
+  }
+
+  :root[data-theme="dark"] .theme-switch .moon {
+    opacity: 0;
+  }
+
+  :root[data-theme="light"] .theme-switch .moon,
+  :root:not([data-theme]) .theme-switch .moon {
+    color: hsl(var(--primary-color));
+    opacity: 1;
+    filter: drop-shadow(0 6px 12px hsl(var(--primary-color) / 0.18));
+  }
+
+  :root[data-theme="light"] .theme-switch .sun,
+  :root:not([data-theme]) .theme-switch .sun {
+    opacity: 0;
+  }
+
+  .panel {
+    @apply border border-border bg-card/92 text-card-foreground;
+    box-shadow: var(--panel-shadow);
+    backdrop-filter: blur(10px);
+  }
+
+  .panel-strong {
+    @apply border border-border bg-card text-card-foreground;
+    box-shadow: var(--panel-shadow-lg);
+  }
+
+  .soft-pill {
+    @apply rounded-full border border-border bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground;
+  }
+
+  .status-success {
+    color: hsl(var(--success-color));
+    background: hsl(var(--success-surface));
+  }
+
+  .status-danger {
+    color: hsl(var(--destructive));
+    background: hsl(var(--danger-surface));
+  }
+}
