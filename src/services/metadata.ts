@@ -6,6 +6,10 @@ export interface AudioTags {
   album: string;
   date: string;
   genre: string;
+  picture?: {
+    format: string;
+    data: ArrayBuffer;
+  };
 }
 
 export async function readMetadata(file: File): Promise<AudioTags> {
@@ -18,12 +22,24 @@ export async function readMetadata(file: File): Promise<AudioTags> {
       console.warn("mp3tag read warning/error:", mp3tag.error);
     }
 
+    let picture = undefined;
+    if (mp3tag.tags.v2?.APIC && mp3tag.tags.v2.APIC.length > 0) {
+      const apic = mp3tag.tags.v2.APIC[0];
+      if (apic.data) {
+        picture = {
+          format: apic.format || 'image/jpeg',
+          data: new Uint8Array(apic.data).buffer
+        };
+      }
+    }
+
     return {
       title: mp3tag.tags.v2?.TIT2 || mp3tag.tags.title || '',
       artist: mp3tag.tags.v2?.TPE1 || mp3tag.tags.artist || '',
       album: mp3tag.tags.v2?.TALB || mp3tag.tags.album || '',
       date: mp3tag.tags.v2?.TDRC || mp3tag.tags.v2?.TYER || mp3tag.tags.year || '',
       genre: mp3tag.tags.v2?.TCON || mp3tag.tags.genre || '',
+      picture
     };
   } catch (error) {
     console.error("Error reading metadata", error);
@@ -63,6 +79,17 @@ export async function writeMetadata(file: File, fileHandle: FileSystemFileHandle
     mp3tag.tags.v2.TDRC = tags.date;
 
     mp3tag.tags.v2.TCON = tags.genre;
+    
+    if (tags.picture) {
+      mp3tag.tags.v2.APIC = [{
+        format: tags.picture.format,
+        type: 3, // cover front
+        description: '',
+        data: Array.from(new Uint8Array(tags.picture.data))
+      }];
+    } else {
+      delete mp3tag.tags.v2.APIC;
+    }
 
     // Write tags back to the array buffer
     mp3tag.save();

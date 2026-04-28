@@ -305,7 +305,7 @@ export default function Library() {
             
             <div className="flex h-full w-full">
                 {/* Left Panel: CSV-like Table */}
-                <div className="border-r h-full flex flex-col overflow-auto bg-background shrink-0" style={{ width: Math.max(250, leftWidth) + 'px' }}>
+                <div className="border-r h-full flex flex-col overflow-hidden bg-background shrink-0" style={{ width: Math.max(250, leftWidth) + 'px' }}>
                   <div className="h-full flex flex-col">
                     <div className="p-3 border-b shrink-0 bg-muted/20 flex justify-between items-center text-xs text-muted-foreground uppercase font-semibold select-none">
                       <div className="flex-1 min-w-[200px] flex items-center gap-2 cursor-pointer hover:text-foreground" onClick={() => handleSort('filename')}>
