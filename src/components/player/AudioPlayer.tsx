@@ -3,7 +3,7 @@ import { useAppStore } from "../../store";
 import { Play, Pause, SkipForward, SkipBack, Volume2, VolumeX } from "lucide-react";
 
 export function AudioPlayer() {
-  const { playingFile, files, setPlayingFile } = useAppStore();
+  const { selectedFile, files, setSelectedFile } = useAppStore();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   
   const [isPlaying, setIsPlaying] = useState(false);
@@ -17,13 +17,13 @@ export function AudioPlayer() {
     let url: string | null = null;
 
     const loadAudio = async () => {
-      if (!playingFile) {
+      if (!selectedFile) {
         setAudioUrl(null);
         return;
       }
 
       try {
-        const file = await playingFile.handle.getFile();
+        const file = await selectedFile.handle.getFile();
         url = URL.createObjectURL(file);
         setAudioUrl(url);
       } catch (err) {
@@ -33,17 +33,17 @@ export function AudioPlayer() {
 
     loadAudio();
 
-    const currentIndex = playingFile ? files.findIndex(f => f.path === playingFile.path) : -1;
+    const currentIndex = selectedFile ? files.findIndex(f => f.path === selectedFile.path) : -1;
       
     const playNext = () => {
       if (currentIndex !== -1 && currentIndex < files.length - 1) {
-        setPlayingFile(files[currentIndex + 1]);
+        setSelectedFile(files[currentIndex + 1]);
       }
     };
 
     const playPrev = () => {
       if (currentIndex > 0) {
-        setPlayingFile(files[currentIndex - 1]);
+        setSelectedFile(files[currentIndex - 1]);
       }
     };
 
@@ -62,12 +62,42 @@ export function AudioPlayer() {
         navigator.mediaSession.setActionHandler('nexttrack', null);
       }
     };
-  }, [playingFile, files, setPlayingFile]);
+  }, [selectedFile, files, setSelectedFile]);
 
   useEffect(() => {
     if (audioRef.current && audioUrl) {
       audioRef.current.play().then(() => setIsPlaying(true)).catch(console.error);
     }
+  }, [audioUrl]);
+
+  useEffect(() => {
+    const handleToggle = () => {
+      if (!audioRef.current || !audioUrl) return;
+      if (!audioRef.current.paused) {
+        audioRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        audioRef.current.play();
+        setIsPlaying(true);
+      }
+    };
+    window.addEventListener('toggle-audio-play', handleToggle);
+    return () => window.removeEventListener('toggle-audio-play', handleToggle);
+  }, [audioUrl]);
+
+  useEffect(() => {
+    const handleToggle = () => {
+      if (!audioRef.current || !audioUrl) return;
+      if (!audioRef.current.paused) {
+        audioRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        audioRef.current.play();
+        setIsPlaying(true);
+      }
+    };
+    window.addEventListener('toggle-audio-play', handleToggle);
+    return () => window.removeEventListener('toggle-audio-play', handleToggle);
   }, [audioUrl]);
 
   const togglePlay = () => {
@@ -115,7 +145,7 @@ export function AudioPlayer() {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  if (!playingFile) {
+  if (!selectedFile) {
     return <div className="text-sm text-muted-foreground">Select a file to play</div>;
   }
 
@@ -132,9 +162,9 @@ export function AudioPlayer() {
           onLoadedMetadata={handleLoadedMetadata}
           onEnded={() => {
             setIsPlaying(false);
-            const currentIndex = playingFile ? files.findIndex(f => f.path === playingFile.path) : -1;
+            const currentIndex = selectedFile ? files.findIndex(f => f.path === selectedFile.path) : -1;
             if (currentIndex !== -1 && currentIndex < files.length - 1) {
-              setPlayingFile(files[currentIndex + 1]);
+              setSelectedFile(files[currentIndex + 1]);
             }
           }}
         />
@@ -142,11 +172,11 @@ export function AudioPlayer() {
 
       {/* Track Info */}
       <div className="w-1/4 min-w-[150px] truncate">
-        <div className="font-medium text-sm truncate" title={playingFile.name}>
-          {playingFile.name}
+        <div className="font-medium text-sm truncate" title={selectedFile.name}>
+          {selectedFile.name}
         </div>
         <div className="text-xs text-muted-foreground truncate">
-          {playingFile.path}
+          {selectedFile.path}
         </div>
       </div>
 
@@ -155,8 +185,8 @@ export function AudioPlayer() {
         <div className="flex items-center gap-4">
           <button 
             onClick={() => {
-              const idx = playingFile ? files.findIndex(f => f.path === playingFile.path) : -1;
-              if (idx > 0) setPlayingFile(files[idx - 1]);
+              const idx = selectedFile ? files.findIndex(f => f.path === selectedFile.path) : -1;
+              if (idx > 0) setSelectedFile(files[idx - 1]);
             }}
             className="text-muted-foreground hover:text-foreground transition-colors"
           >
@@ -170,8 +200,8 @@ export function AudioPlayer() {
           </button>
           <button 
             onClick={() => {
-              const idx = playingFile ? files.findIndex(f => f.path === playingFile.path) : -1;
-              if (idx !== -1 && idx < files.length - 1) setPlayingFile(files[idx + 1]);
+              const idx = selectedFile ? files.findIndex(f => f.path === selectedFile.path) : -1;
+              if (idx !== -1 && idx < files.length - 1) setSelectedFile(files[idx + 1]);
             }}
             className="text-muted-foreground hover:text-foreground transition-colors"
           >

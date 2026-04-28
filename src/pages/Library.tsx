@@ -3,12 +3,12 @@ import { useAppStore, FileEntry } from "../store";
 import { openDirectory, scanDirectoryForAudio, checkPermission } from "../services/fsAccess";
 import { readMetadata, writeMetadata, AudioTags } from "../services/metadata";
 
-import { PlayCircle, Settings2, CheckCircle2, Image as ImageIcon, UploadCloud, Link as LinkIcon, Keyboard, Search, X } from "lucide-react";
+import { Settings2, CheckCircle2, Image as ImageIcon, UploadCloud, Link as LinkIcon, Keyboard, Search, X } from "lucide-react";
 
 export default function Library() {
   const { 
     folderHandle, files, setFolderHandle, setFiles, setScanning, isScanning, 
-    setPlayingFile, playingFile,
+    selectedFile, setSelectedFile,
     recentArtists, recentAlbums, recentGenres, addRecentMetadata,
     filenamePresets,
     markFileAsEdited, updateFileMetadata,
@@ -18,7 +18,7 @@ export default function Library() {
   const [showColumnConfig, setShowColumnConfig] = useState(false);
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
 
-  const [selectedFile, setSelectedFile] = useState<FileEntry | null>(null);
+  // using global selectedFile
   const [metadata, setMetadata] = useState<AudioTags | null>(null);
   const [isReading, setIsReading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -112,11 +112,7 @@ export default function Library() {
          
          if (e.key === ' ') {
             e.preventDefault();
-            if (playingFile) {
-               setPlayingFile(null); // Pause
-            } else if (selectedFile) {
-               setPlayingFile(selectedFile); // Play selected
-            }
+            window.dispatchEvent(new CustomEvent('toggle-audio-play'));
          } else if (e.key === 'ArrowDown' || e.key.toLowerCase() === 'n') {
             e.preventDefault();
             if (currentIndex >= 0 && currentIndex < sortedFiles.length - 1) {
@@ -134,7 +130,7 @@ export default function Library() {
     };
     window.addEventListener('keydown', downHandler);
     return () => window.removeEventListener('keydown', downHandler);
-  }, [selectedFile, playingFile, sortedFiles, showShortcuts, files]);
+  }, [selectedFile, sortedFiles, showShortcuts, files]);
 
   const handleOpenFolder = async () => {
     try {
@@ -383,23 +379,7 @@ export default function Library() {
                           <p className="text-xs text-muted-foreground mt-0.5 truncate">{selectedFile.path}</p>
                         </div>
                         
-                        <button 
-                          onClick={() => {
-                             if (playingFile?.name === selectedFile.name) {
-                                setPlayingFile(null);
-                             } else {
-                                setPlayingFile(selectedFile);
-                             }
-                          }}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium shrink-0 border transition-colors ${
-                              playingFile?.name === selectedFile.name 
-                              ? 'bg-primary text-primary-foreground border-primary' 
-                              : 'bg-primary/10 text-primary hover:bg-primary/20 border-primary/20'
-                          }`}
-                        >
-                          <PlayCircle className="h-4 w-4" />
-                          {playingFile?.name === selectedFile.name ? 'Pause' : 'Play'}
-                        </button>
+
                       </div>
                       
                       <div className="flex-1 p-4 pb-12 content-visibility-auto">
@@ -620,8 +600,8 @@ export default function Library() {
                                           const newEntry = foundFiles.find(f => f.name === preview);
                                           if (newEntry) {
                                             setSelectedFile(newEntry);
-                                            if (playingFile?.name === selectedFile.name) {
-                                               setPlayingFile(newEntry);
+                                            if (false) {
+                                               window.dispatchEvent(new CustomEvent('toggle-audio-play'));
                                             }
                                             useAppStore.getState().markFileAsEdited(newEntry.path);
                                           }

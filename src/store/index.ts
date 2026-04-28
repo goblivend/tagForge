@@ -21,8 +21,7 @@ interface AppState {
   folderHandle: FileSystemDirectoryHandle | null;
   files: FileEntry[];
   selectedFile: FileEntry | null;
-  playingFile: FileEntry | null;
-  isScanning: boolean;
+    isScanning: boolean;
   
   // Autocomplete tracking
   recentArtists: string[];
@@ -39,8 +38,7 @@ interface AppState {
   setFolderHandle: (handle: FileSystemDirectoryHandle | null) => void;
   setFiles: (files: FileEntry[]) => void;
   setSelectedFile: (file: FileEntry | null) => void;
-  setPlayingFile: (file: FileEntry | null) => void;
-  setScanning: (isScanning: boolean) => void;
+    setScanning: (isScanning: boolean) => void;
   addRecentMetadata: (tags: { artist?: string; album?: string; genre?: string }) => void;
   
   addFilenamePreset: (preset: FilenamePreset) => void;
@@ -59,8 +57,7 @@ export const useAppStore = create<AppState>()(
       folderHandle: null,
       files: [],
       selectedFile: null,
-      playingFile: null,
-      isScanning: false,
+            isScanning: false,
       recentArtists: [],
       recentAlbums: [],
       recentGenres: [],
@@ -95,8 +92,7 @@ export const useAppStore = create<AppState>()(
         const current = selectedFile ? state.files.find(f => f.path === selectedFile.path) : null;
         return { selectedFile: current || selectedFile };
       }),
-      setPlayingFile: (playingFile) => set({ playingFile }),
-      setScanning: (isScanning) => set({ isScanning }),
+            setScanning: (isScanning) => set({ isScanning }),
       addRecentMetadata: (tags) => set((state) => {
         const newArtists = new Set(state.recentArtists);
         const newAlbums = new Set(state.recentAlbums);
@@ -137,7 +133,6 @@ export const useAppStore = create<AppState>()(
         folderHandle: null, 
         files: [], 
         selectedFile: null, 
-        playingFile: null, 
         isScanning: false,
         recentArtists: [],
         recentAlbums: [],

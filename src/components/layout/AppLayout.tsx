@@ -1,8 +1,10 @@
 import { Outlet, NavLink } from "react-router-dom";
 import { ListMusic, Settings, Home, List } from "lucide-react";
 import { AudioPlayer } from "../player/AudioPlayer";
+import { useAppStore } from "../../store";
 
 export function AppLayout() {
+  const { selectedFile } = useAppStore();
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
       {/* Sidebar sidebar */}
@@ -15,8 +17,7 @@ export function AppLayout() {
           <NavLink
             to="/"
             className={({ isActive }) =>
-              `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                isActive ? "bg-primary text-primary-foreground" : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"
+              `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${isActive ? "bg-primary text-primary-foreground" : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"
               }`
             }
           >
@@ -26,8 +27,7 @@ export function AppLayout() {
           <NavLink
             to="/playlists"
             className={({ isActive }) =>
-              `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                isActive ? "bg-primary text-primary-foreground" : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"
+              `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${isActive ? "bg-primary text-primary-foreground" : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"
               }`
             }
           >
@@ -37,8 +37,7 @@ export function AppLayout() {
           <NavLink
             to="/settings"
             className={({ isActive }) =>
-              `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                isActive ? "bg-primary text-primary-foreground" : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"
+              `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${isActive ? "bg-primary text-primary-foreground" : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"
               }`
             }
           >
@@ -56,9 +55,11 @@ export function AppLayout() {
         </div>
 
         {/* Audio Player Footer Bar */}
-        <div className="border-t bg-card h-20 p-4 flex items-center justify-between shadow-[0_-4px_6px_-1px_rgb(0,0,0,0.1)] z-10 relative">
-          <AudioPlayer />
-        </div>
+        {selectedFile && (
+          <div className="border-t bg-card h-20 p-4 flex items-center justify-between shadow-[0_-4px_6px_-1px_rgb(0,0,0,0.1)] z-10 relative">
+            <AudioPlayer />
+          </div>
+        )}
       </main>
     </div>
   );
