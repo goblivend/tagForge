@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAppStore } from "../store";
 
 export default function Settings() {
-  const { filenamePresets, addFilenamePreset, removeFilenamePreset, updateFilenamePreset } = useAppStore();
+  const { filenamePresets, addFilenamePreset, removeFilenamePreset, updateFilenamePreset, moveFilenamePreset } = useAppStore();
   const [newPresetName, setNewPresetName] = useState("");
   const [newPresetFormat, setNewPresetFormat] = useState("");
 
@@ -37,17 +37,37 @@ export default function Settings() {
           <div className="space-y-6">
             {filenamePresets.map(preset => (
               <div key={preset.id} className="group relative rounded-xl border border-border/80 bg-background/75 p-4 shadow-[var(--panel-shadow)]">
+                <div className="absolute left-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                  <button
+                    type="button"
+                    onClick={() => moveFilenamePreset(preset.id, 'up')}
+                    disabled={filenamePresets[0]?.id === preset.id}
+                    className="rounded-md border border-border/70 bg-muted/70 px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/80 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                    title="Move preset up"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveFilenamePreset(preset.id, 'down')}
+                    disabled={filenamePresets[filenamePresets.length - 1]?.id === preset.id}
+                    className="rounded-md border border-border/70 bg-muted/70 px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/80 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                    title="Move preset down"
+                  >
+                    ↓
+                  </button>
+                </div>
                 <div className="space-y-3">
-                  <div className="flex gap-3 items-center">
-                    <input 
-                      type="text" 
+                  <div className="flex gap-3 items-center pl-12">
+                    <input
+                      type="text"
                       value={preset.name}
                       onChange={(e) => updateFilenamePreset(preset.id, { name: e.target.value })}
                       className="flex h-10 w-1/3 rounded-xl px-3 py-1 text-sm"
                       placeholder="Preset Name"
                     />
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       value={preset.format}
                       onChange={(e) => updateFilenamePreset(preset.id, { format: e.target.value })}
                       className="flex h-10 flex-1 rounded-xl px-3 py-1 text-sm font-mono"
@@ -69,13 +89,13 @@ export default function Settings() {
                   </div>
                 </div>
                 {filenamePresets.length > 1 && (
-                   <button 
-                     onClick={() => removeFilenamePreset(preset.id)}
-                     className="absolute right-2 top-2 rounded-lg bg-red-500/10 p-1.5 text-red-500 opacity-0 transition-opacity hover:bg-red-500/20 group-hover:opacity-100"
-                     title="Remove preset"
-                   >
-                     ✕
-                   </button>
+                  <button
+                    onClick={() => removeFilenamePreset(preset.id)}
+                    className="absolute right-2 top-2 rounded-lg bg-red-500/10 p-1.5 text-red-500 opacity-0 transition-opacity hover:bg-red-500/20 group-hover:opacity-100"
+                    title="Remove preset"
+                  >
+                    ✕
+                  </button>
                 )}
               </div>
             ))}
@@ -83,15 +103,15 @@ export default function Settings() {
             <div className="pt-4 mt-2 border-t border-dashed">
               <h4 className="text-sm font-medium mb-3">Add Custom Preset</h4>
               <div className="flex gap-2">
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={newPresetName}
                   onChange={(e) => setNewPresetName(e.target.value)}
                   className="flex h-10 w-1/3 rounded-xl px-3 py-2 text-sm"
                   placeholder="e.g. Podcasts"
                 />
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={newPresetFormat}
                   onChange={(e) => setNewPresetFormat(e.target.value)}
                   className="flex h-10 flex-1 rounded-xl px-3 py-2 text-sm font-mono"
@@ -100,7 +120,7 @@ export default function Settings() {
                     if (e.key === 'Enter') handleAddPreset()
                   }}
                 />
-                <button 
+                <button
                   onClick={handleAddPreset}
                   disabled={!newPresetName.trim() || !newPresetFormat.trim()}
                   className="rounded-xl bg-[linear-gradient(135deg,hsl(var(--primary-color)),hsl(var(--primary-dark)))] px-4 py-2 font-semibold text-primary-foreground shadow-[var(--panel-shadow)] transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-[var(--panel-shadow-lg)] disabled:opacity-50"

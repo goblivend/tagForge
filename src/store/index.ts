@@ -57,6 +57,7 @@ interface AppState {
   addFilenamePreset: (preset: FilenamePreset) => void;
   removeFilenamePreset: (id: string) => void;
   setActivePresetId: (id: string) => void;
+  moveFilenamePreset: (id: string, direction: 'up' | 'down') => void;
   updateFilenamePreset: (id: string, preset: Partial<FilenamePreset>) => void;
   markFileAsEdited: (path: string) => void;
   updateFileMetadata: (path: string, metadata: FileEntry['metadata']) => void;
@@ -133,6 +134,19 @@ export const useAppStore = create<AppState>()(
           : state.activePresetId
       })),
       setActivePresetId: (id) => set({ activePresetId: id }),
+      moveFilenamePreset: (id, direction) => set((state) => {
+        const currentIndex = state.filenamePresets.findIndex(preset => preset.id === id);
+        if (currentIndex < 0) return state;
+
+        const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+        if (targetIndex < 0 || targetIndex >= state.filenamePresets.length) return state;
+
+        const nextPresets = [...state.filenamePresets];
+        const [movedPreset] = nextPresets.splice(currentIndex, 1);
+        nextPresets.splice(targetIndex, 0, movedPreset);
+
+        return { filenamePresets: nextPresets };
+      }),
       updateFilenamePreset: (id, preset) => set((state) => ({
         filenamePresets: state.filenamePresets.map(p => p.id === id ? { ...p, ...preset } : p)
       })),
