@@ -3,6 +3,19 @@ import { persist } from 'zustand/middleware';
 
 import { AudioTags } from "../services/metadata";
 
+function hasValidPicture(picture?: AudioTags['picture'] | null) {
+  return !!picture?.data && picture.data.byteLength > 0;
+}
+
+function sanitizeMetadata(metadata?: Partial<AudioTags>) {
+  if (!metadata) return metadata;
+  if (!hasValidPicture(metadata.picture)) {
+    const { picture, ...rest } = metadata;
+    return rest;
+  }
+  return metadata;
+}
+
 export interface FileEntry {
   handle: FileSystemFileHandle;
   path: string;
@@ -22,32 +35,32 @@ interface AppState {
   files: FileEntry[];
   selectedFile: FileEntry | null;
     isScanning: boolean;
-  
+
   // Autocomplete tracking
   recentArtists: string[];
   recentAlbums: string[];
   recentGenres: string[];
-  
+
   // Library View Settings
   hiddenColumns: Record<string, boolean>;
   toggleColumn: (col: string) => void;
-  
+
   filenamePresets: FilenamePreset[];
   activePresetId: string;
-  
+
   setFolderHandle: (handle: FileSystemDirectoryHandle | null) => void;
   setFiles: (files: FileEntry[]) => void;
   setSelectedFile: (file: FileEntry | null) => void;
     setScanning: (isScanning: boolean) => void;
   addRecentMetadata: (tags: { artist?: string; album?: string; genre?: string }) => void;
-  
+
   addFilenamePreset: (preset: FilenamePreset) => void;
   removeFilenamePreset: (id: string) => void;
   setActivePresetId: (id: string) => void;
   updateFilenamePreset: (id: string, preset: Partial<FilenamePreset>) => void;
   markFileAsEdited: (path: string) => void;
   updateFileMetadata: (path: string, metadata: FileEntry['metadata']) => void;
-  
+
   clearState: () => void;
 }
 
@@ -61,7 +74,7 @@ export const useAppStore = create<AppState>()(
       recentArtists: [],
       recentAlbums: [],
       recentGenres: [],
-      
+
       hiddenColumns: {},
       toggleColumn: (col) => set(state => ({
         hiddenColumns: { ...state.hiddenColumns, [col]: !state.hiddenColumns[col] }
@@ -79,10 +92,12 @@ export const useAppStore = create<AppState>()(
         const oldFilesMap = new Map(state.files.map(f => [f.path, f]));
         const newFiles = files.map(f => {
           const old = oldFilesMap.get(f.path);
+          const oldMetadata = sanitizeMetadata(old?.metadata);
+          const nextMetadata = sanitizeMetadata(f.metadata);
           return {
             ...f,
             isEdited: old?.isEdited || f.isEdited,
-            metadata: old?.metadata || f.metadata
+            metadata: oldMetadata || nextMetadata
           };
         });
         return { files: newFiles };
@@ -97,24 +112,24 @@ export const useAppStore = create<AppState>()(
         const newArtists = new Set(state.recentArtists);
         const newAlbums = new Set(state.recentAlbums);
         const newGenres = new Set(state.recentGenres);
-        
+
         if (tags.artist?.trim()) newArtists.add(tags.artist.trim());
         if (tags.album?.trim()) newAlbums.add(tags.album.trim());
         if (tags.genre?.trim()) newGenres.add(tags.genre.trim());
-        
+
         return {
           recentArtists: Array.from(newArtists).sort(),
           recentAlbums: Array.from(newAlbums).sort(),
           recentGenres: Array.from(newGenres).sort(),
         };
       }),
-      addFilenamePreset: (preset) => set((state) => ({ 
-        filenamePresets: [...state.filenamePresets, preset] 
+      addFilenamePreset: (preset) => set((state) => ({
+        filenamePresets: [...state.filenamePresets, preset]
       })),
-      removeFilenamePreset: (id) => set((state) => ({ 
+      removeFilenamePreset: (id) => set((state) => ({
         filenamePresets: state.filenamePresets.filter(p => p.id !== id),
-        activePresetId: state.activePresetId === id && state.filenamePresets.length > 1 
-          ? state.filenamePresets.find(p => p.id !== id)?.id || state.filenamePresets[0].id 
+        activePresetId: state.activePresetId === id && state.filenamePresets.length > 1
+          ? state.filenamePresets.find(p => p.id !== id)?.id || state.filenamePresets[0].id
           : state.activePresetId
       })),
       setActivePresetId: (id) => set({ activePresetId: id }),
@@ -126,13 +141,13 @@ export const useAppStore = create<AppState>()(
         selectedFile: state.selectedFile?.path === path ? { ...state.selectedFile, isEdited: true } : state.selectedFile
       })),
       updateFileMetadata: (path, metadata) => set((state) => ({
-        files: state.files.map(f => f.path === path ? { ...f, metadata: { ...f.metadata, ...metadata } } : f),
-        selectedFile: state.selectedFile?.path === path ? { ...state.selectedFile, metadata: { ...state.selectedFile.metadata, ...metadata } } : state.selectedFile
+        files: state.files.map(f => f.path === path ? { ...f, metadata: sanitizeMetadata({ ...f.metadata, ...metadata }) } : f),
+        selectedFile: state.selectedFile?.path === path ? { ...state.selectedFile, metadata: sanitizeMetadata({ ...state.selectedFile.metadata, ...metadata }) } : state.selectedFile
       })),
-      clearState: () => set({ 
-        folderHandle: null, 
-        files: [], 
-        selectedFile: null, 
+      clearState: () => set({
+        folderHandle: null,
+        files: [],
+        selectedFile: null,
         isScanning: false,
         recentArtists: [],
         recentAlbums: [],

@@ -24,12 +24,17 @@ export async function readMetadata(file: File): Promise<AudioTags> {
 
     let picture = undefined;
     if (mp3tag.tags.v2?.APIC && mp3tag.tags.v2.APIC.length > 0) {
-      const apic = mp3tag.tags.v2.APIC[0];
-      if (apic.data) {
+      for (const apic of mp3tag.tags.v2.APIC) {
+        const imageData = apic.data ? new Uint8Array(apic.data).buffer : null;
+        if (!imageData || imageData.byteLength === 0) {
+          continue;
+        }
+
         picture = {
           format: apic.format || 'image/jpeg',
-          data: new Uint8Array(apic.data).buffer
+          data: imageData
         };
+        break;
       }
     }
 
@@ -79,7 +84,7 @@ export async function writeMetadata(file: File, fileHandle: FileSystemFileHandle
     mp3tag.tags.v2.TDRC = tags.date;
 
     mp3tag.tags.v2.TCON = tags.genre;
-    
+
     if (tags.picture) {
       mp3tag.tags.v2.APIC = [{
         format: tags.picture.format,

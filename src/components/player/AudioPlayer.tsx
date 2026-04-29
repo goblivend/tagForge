@@ -5,7 +5,8 @@ import { Play, Pause, SkipForward, SkipBack, Volume2, VolumeX } from "lucide-rea
 export function AudioPlayer() {
   const { selectedFile, files, setSelectedFile } = useAppStore();
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  
+  const selectedPath = selectedFile?.path;
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -33,8 +34,16 @@ export function AudioPlayer() {
 
     loadAudio();
 
-    const currentIndex = selectedFile ? files.findIndex(f => f.path === selectedFile.path) : -1;
-      
+    return () => {
+      if (url) {
+        URL.revokeObjectURL(url);
+      }
+    };
+  }, [selectedPath, selectedFile]);
+
+  useEffect(() => {
+    const currentIndex = selectedPath ? files.findIndex(f => f.path === selectedPath) : -1;
+
     const playNext = () => {
       if (currentIndex !== -1 && currentIndex < files.length - 1) {
         setSelectedFile(files[currentIndex + 1]);
@@ -47,43 +56,30 @@ export function AudioPlayer() {
       }
     };
 
-    // Set up media session for OS-level keyboard controls (Next/Prev)
     if ('mediaSession' in navigator) {
       navigator.mediaSession.setActionHandler('previoustrack', playPrev);
       navigator.mediaSession.setActionHandler('nexttrack', playNext);
     }
 
     return () => {
-      if (url) {
-        URL.revokeObjectURL(url);
-      }
       if ('mediaSession' in navigator) {
         navigator.mediaSession.setActionHandler('previoustrack', null);
         navigator.mediaSession.setActionHandler('nexttrack', null);
       }
     };
-  }, [selectedFile, files, setSelectedFile]);
+  }, [selectedPath, files, setSelectedFile]);
 
   useEffect(() => {
     if (audioRef.current && audioUrl) {
-      audioRef.current.play().then(() => setIsPlaying(true)).catch(console.error);
-    }
-  }, [audioUrl]);
-
-  useEffect(() => {
-    const handleToggle = () => {
-      if (!audioRef.current || !audioUrl) return;
-      if (!audioRef.current.paused) {
-        audioRef.current.pause();
-        setIsPlaying(false);
-      } else {
-        audioRef.current.play();
-        setIsPlaying(true);
+      // Only auto-play if something was already playing
+      if (isPlaying) {
+        audioRef.current.play().catch(() => {
+          // Play failed (e.g., interrupted by new load), just ignore
+          setIsPlaying(false);
+        });
       }
-    };
-    window.addEventListener('toggle-audio-play', handleToggle);
-    return () => window.removeEventListener('toggle-audio-play', handleToggle);
-  }, [audioUrl]);
+    }
+  }, [audioUrl, isPlaying]);
 
   useEffect(() => {
     const handleToggle = () => {
@@ -102,7 +98,7 @@ export function AudioPlayer() {
 
   const togglePlay = () => {
     if (!audioRef.current || !audioUrl) return;
-    
+
     if (isPlaying) {
       audioRef.current.pause();
     } else {
@@ -183,7 +179,7 @@ export function AudioPlayer() {
       {/* Controls & Timeline */}
       <div className="flex max-w-2xl flex-1 flex-col items-center justify-center gap-2">
         <div className="flex items-center gap-4">
-          <button 
+          <button
             onClick={() => {
               const idx = selectedFile ? files.findIndex(f => f.path === selectedFile.path) : -1;
               if (idx > 0) setSelectedFile(files[idx - 1]);
@@ -192,13 +188,13 @@ export function AudioPlayer() {
           >
             <SkipBack className="h-5 w-5" />
           </button>
-          <button 
+          <button
             onClick={togglePlay}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-[linear-gradient(135deg,hsl(var(--primary-color)),hsl(var(--primary-dark)))] text-primary-foreground shadow-[var(--panel-shadow)] transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-[var(--panel-shadow-lg)]"
           >
             {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
           </button>
-          <button 
+          <button
             onClick={() => {
               const idx = selectedFile ? files.findIndex(f => f.path === selectedFile.path) : -1;
               if (idx !== -1 && idx < files.length - 1) setSelectedFile(files[idx + 1]);
@@ -208,7 +204,7 @@ export function AudioPlayer() {
             <SkipForward className="h-5 w-5" />
           </button>
         </div>
-        
+
         <div className="w-full flex items-center gap-2 text-xs text-muted-foreground">
           <span>{formatTime(currentTime)}</span>
           <input
