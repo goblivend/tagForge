@@ -3,7 +3,7 @@ import { useAppStore, FileEntry } from "../store";
 import { openDirectory, scanDirectoryForAudio, checkPermission } from "../services/fsAccess";
 import { readMetadata, writeMetadata, AudioTags } from "../services/metadata";
 
-import { Settings2, CheckCircle2, Image as ImageIcon, UploadCloud, Link as LinkIcon, Keyboard, Search, X } from "lucide-react";
+import { Settings2, CheckCircle2, Image as ImageIcon, UploadCloud, Link as LinkIcon, Clipboard, Keyboard, Search, X } from "lucide-react";
 
 const DEBUG_COVERS = import.meta.env.DEV;
 
@@ -15,6 +15,54 @@ function debugCover(...args: unknown[]) {
 
 function hasValidPicture(picture?: { format: string; data: ArrayBuffer } | null): picture is { format: string; data: ArrayBuffer } {
   return !!picture?.data && picture.data.byteLength > 0;
+}
+
+type ClipboardImageItem = {
+  types: string[];
+  getType: (type: string) => Promise<Blob>;
+};
+
+async function readClipboardImage(): Promise<{ format: string; data: ArrayBuffer } | null> {
+  if (typeof navigator === 'undefined' || !navigator.clipboard || typeof navigator.clipboard.read !== 'function') {
+    return null;
+  }
+
+  const items = await navigator.clipboard.read() as unknown as ClipboardImageItem[];
+  for (const item of items) {
+    const imageType = item.types.find(type => type.startsWith('image/'));
+    if (!imageType) continue;
+
+    const blob = await item.getType(imageType);
+    return {
+      format: blob.type || imageType,
+      data: await blob.arrayBuffer(),
+    };
+  }
+
+  return null;
+}
+
+async function readPictureFromClipboardData(clipboardData: DataTransfer | null): Promise<{ format: string; data: ArrayBuffer } | null> {
+  if (!clipboardData) return null;
+
+  const file = Array.from(clipboardData.files).find((item) => item.type.startsWith('image/'));
+  if (file) {
+    return {
+      format: file.type || 'image/png',
+      data: await file.arrayBuffer(),
+    };
+  }
+
+  const item = Array.from(clipboardData.items).find((entry) => entry.kind === 'file' && entry.type.startsWith('image/'));
+  if (!item) return null;
+
+  const fileFromItem = item.getAsFile();
+  if (!fileFromItem) return null;
+
+  return {
+    format: fileFromItem.type || item.type || 'image/png',
+    data: await fileFromItem.arrayBuffer(),
+  };
 }
 
 function CoverThumb({
@@ -301,6 +349,29 @@ export default function Library() {
     window.addEventListener('keydown', downHandler);
     return () => window.removeEventListener('keydown', downHandler);
   }, [selectedFile, sortedFiles, showShortcuts, files]);
+
+  useEffect(() => {
+    const pasteHandler = (event: Event) => {
+      void (async () => {
+        const clipboardEvent = event as ClipboardEvent;
+        const target = clipboardEvent.target as HTMLElement | null;
+        const isTextField = !!target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
+        if (isTextField || !selectedFile) return;
+
+        const picture = await readPictureFromClipboardData(clipboardEvent.clipboardData);
+        if (!picture) return;
+
+        clipboardEvent.preventDefault();
+        handleChange('picture', picture as any);
+        updateFileMetadata(selectedFile.path, { picture });
+        setSaveMessage('Pasted image from clipboard');
+        setTimeout(() => setSaveMessage(null), 2000);
+      })();
+    };
+
+    window.addEventListener('paste', pasteHandler);
+    return () => window.removeEventListener('paste', pasteHandler);
+  }, [selectedFile]);
 
   // Make default left width responsive to screen size
   useEffect(() => {
@@ -765,10 +836,10 @@ export default function Library() {
                             key={file.path}
                             onClick={() => handleSelectFile(file)}
                             className={`group flex cursor-pointer items-center rounded-lg p-1.5 text-xs transition-[transform,background-color,color,box-shadow] ${selectedFile?.path === file.path
-                                ? 'bg-[linear-gradient(135deg,hsl(var(--primary-color)/0.18),hsl(var(--accent-color)/0.14))] text-foreground font-medium shadow-[var(--panel-shadow)]'
-                                : file.isEdited
-                                  ? 'text-foreground hover:bg-accent/80'
-                                  : 'text-muted-foreground hover:bg-accent/80 hover:text-foreground'
+                              ? 'bg-[linear-gradient(135deg,hsl(var(--primary-color)/0.18),hsl(var(--accent-color)/0.14))] text-foreground font-medium shadow-[var(--panel-shadow)]'
+                              : file.isEdited
+                                ? 'text-foreground hover:bg-accent/80'
+                                : 'text-muted-foreground hover:bg-accent/80 hover:text-foreground'
                               }`}
                           >
                             <div className="flex-1 min-w-[200px] truncate flex items-center gap-1.5">
@@ -892,14 +963,14 @@ export default function Library() {
                         </div>
 
                         <div className="space-y-4 border-t border-border/70 pt-4">
-                          <label className="text-sm font-medium text-foreground flex items-center justify-between gap-4">
+                          <div className="text-sm font-medium text-foreground flex items-center justify-between gap-4">
                             <span>Cover Art</span>
-                            <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-                              <button type="button" title="Use cover from an existing file in this folder (same album first)" className="flex items-center gap-1 rounded-lg border border-border/70 bg-background/80 p-1 px-2 text-xs text-muted-foreground transition-[transform,background-color,color] hover:-translate-y-0.5 hover:bg-accent/80 hover:text-foreground" onClick={() => setShowFindModal(true)}>
+                            <div className="flex flex-wrap items-center gap-1.5 shrink-0 isolate">
+                              <button type="button" title="Use cover from an existing file in this folder (same album first)" className="flex items-center gap-1 rounded-lg border border-border/70 bg-background/80 p-1 px-2 text-xs text-muted-foreground transition-colors hover:bg-accent/80 hover:text-foreground" onClick={() => setShowFindModal(true)}>
                                 <Search size={14} /> Find
                               </button>
 
-                              <label className="flex cursor-pointer items-center gap-1 rounded-lg border border-border/70 bg-background/80 p-1 px-2 text-xs text-muted-foreground transition-[transform,background-color,color] hover:-translate-y-0.5 hover:bg-accent/80 hover:text-foreground" title="Upload an image file">
+                              <label className="flex cursor-pointer items-center gap-1 rounded-lg border border-border/70 bg-background/80 p-1 px-2 text-xs text-muted-foreground transition-colors hover:bg-accent/80 hover:text-foreground" title="Upload an image file">
                                 <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
                                   const file = e.target.files?.[0];
                                   if (!file) return;
@@ -909,7 +980,7 @@ export default function Library() {
                                 <UploadCloud size={14} /> Upload
                               </label>
 
-                              <button type="button" className="flex items-center gap-1 rounded-lg border border-border/70 bg-background/80 p-1 px-2 text-xs text-muted-foreground transition-[transform,background-color,color] hover:-translate-y-0.5 hover:bg-accent/80 hover:text-foreground" title="Add image from URL" onClick={async () => {
+                              <button type="button" className="flex items-center gap-1 rounded-lg border border-border/70 bg-background/80 p-1 px-2 text-xs text-muted-foreground transition-colors hover:bg-accent/80 hover:text-foreground" title="Add image from URL" onClick={async () => {
                                 const url = prompt("Enter image URL:");
                                 if (!url) return;
                                 try {
@@ -923,8 +994,32 @@ export default function Library() {
                               }}>
                                 <LinkIcon size={14} /> URL
                               </button>
+
+                              <button type="button" className="flex items-center gap-1 rounded-lg border border-border/70 bg-background/80 p-1 px-2 text-xs text-muted-foreground transition-colors hover:bg-accent/80 hover:text-foreground" title="Paste image from clipboard" onClick={async () => {
+                                try {
+                                  const picture = await readClipboardImage();
+                                  if (!picture) {
+                                    setSaveMessage('Error: No image found in the clipboard. Copy an image first.');
+                                    setTimeout(() => setSaveMessage(null), 3000);
+                                    return;
+                                  }
+
+                                  handleChange('picture', picture as any);
+                                  if (selectedFile) {
+                                    updateFileMetadata(selectedFile.path, { picture });
+                                  }
+                                  setSaveMessage('Pasted image from clipboard');
+                                  setTimeout(() => setSaveMessage(null), 2000);
+                                } catch (e) {
+                                  console.error('Error pasting image from clipboard', e);
+                                  setSaveMessage('Error: Could not read an image from the clipboard.');
+                                  setTimeout(() => setSaveMessage(null), 3000);
+                                }
+                              }}>
+                                <Clipboard size={14} /> Paste
+                              </button>
                             </div>
-                          </label>
+                          </div>
                           <div className="group relative mb-4 flex aspect-square w-full max-w-[250px] items-center justify-center overflow-hidden rounded-2xl border border-border/70 bg-muted/30 shadow-[var(--panel-shadow)]">
                             {hasValidPicture(metadata.picture) ? (
                               <>
