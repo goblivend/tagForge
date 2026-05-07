@@ -37,7 +37,7 @@ export default function Settings() {
           <div className="space-y-6">
             {filenamePresets.map(preset => (
               <div key={preset.id} className="group relative rounded-xl border border-border/80 bg-background/75 p-4 shadow-[var(--panel-shadow)]">
-                <div className="absolute left-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                <div className="absolute left-2 top-2 flex gap-1 opacity-100 md:opacity-0 md:transition-opacity md:group-hover:opacity-100">
                   <button
                     type="button"
                     onClick={() => moveFilenamePreset(preset.id, 'up')}
@@ -58,19 +58,19 @@ export default function Settings() {
                   </button>
                 </div>
                 <div className="space-y-3">
-                  <div className="flex gap-3 items-center pl-12">
+                  <div className="flex flex-col gap-3 pl-12 md:flex-row md:items-center">
                     <input
                       type="text"
                       value={preset.name}
                       onChange={(e) => updateFilenamePreset(preset.id, { name: e.target.value })}
-                      className="flex h-10 w-1/3 rounded-xl px-3 py-1 text-sm"
+                      className="flex h-10 w-full min-w-0 rounded-xl px-3 py-1 text-sm md:w-1/3"
                       placeholder="Preset Name"
                     />
                     <input
                       type="text"
                       value={preset.format}
                       onChange={(e) => updateFilenamePreset(preset.id, { format: e.target.value })}
-                      className="flex h-10 flex-1 rounded-xl px-3 py-1 text-sm font-mono"
+                      className="flex h-10 w-full min-w-0 flex-1 rounded-xl px-3 py-1 text-sm font-mono"
                       placeholder="{artist} - {title}"
                     />
                   </div>
@@ -91,7 +91,7 @@ export default function Settings() {
                 {filenamePresets.length > 1 && (
                   <button
                     onClick={() => removeFilenamePreset(preset.id)}
-                    className="absolute right-2 top-2 rounded-lg bg-red-500/10 p-1.5 text-red-500 opacity-0 transition-opacity hover:bg-red-500/20 group-hover:opacity-100"
+                    className="absolute right-2 top-2 rounded-lg bg-red-500/10 p-1.5 text-red-500 opacity-100 md:opacity-0 md:transition-opacity md:hover:bg-red-500/20 md:group-hover:opacity-100"
                     title="Remove preset"
                   >
                     ✕
@@ -102,19 +102,19 @@ export default function Settings() {
 
             <div className="pt-4 mt-2 border-t border-dashed">
               <h4 className="text-sm font-medium mb-3">Add Custom Preset</h4>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 md:flex-row">
                 <input
                   type="text"
                   value={newPresetName}
                   onChange={(e) => setNewPresetName(e.target.value)}
-                  className="flex h-10 w-1/3 rounded-xl px-3 py-2 text-sm"
+                  className="flex h-10 w-full min-w-0 rounded-xl px-3 py-2 text-sm md:w-1/3"
                   placeholder="e.g. Podcasts"
                 />
                 <input
                   type="text"
                   value={newPresetFormat}
                   onChange={(e) => setNewPresetFormat(e.target.value)}
-                  className="flex h-10 flex-1 rounded-xl px-3 py-2 text-sm font-mono"
+                  className="flex h-10 w-full min-w-0 flex-1 rounded-xl px-3 py-2 text-sm font-mono"
                   placeholder="{date} - {title}"
                   onKeyDown={e => {
                     if (e.key === 'Enter') handleAddPreset()
@@ -123,7 +123,7 @@ export default function Settings() {
                 <button
                   onClick={handleAddPreset}
                   disabled={!newPresetName.trim() || !newPresetFormat.trim()}
-                  className="rounded-xl bg-[linear-gradient(135deg,hsl(var(--primary-color)),hsl(var(--primary-dark)))] px-4 py-2 font-semibold text-primary-foreground shadow-[var(--panel-shadow)] transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-[var(--panel-shadow-lg)] disabled:opacity-50"
+                  className="w-full rounded-xl bg-[linear-gradient(135deg,hsl(var(--primary-color)),hsl(var(--primary-dark)))] px-4 py-2 font-semibold text-primary-foreground shadow-[var(--panel-shadow)] transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-[var(--panel-shadow-lg)] disabled:opacity-50 md:w-auto"
                 >
                   Add
                 </button>

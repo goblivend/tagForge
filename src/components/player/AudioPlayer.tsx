@@ -146,7 +146,7 @@ export function AudioPlayer() {
   }
 
   return (
-    <div className="flex h-full w-full items-center justify-between gap-4">
+    <div className="flex h-full w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
       {/* Hidden audio element */}
       {audioUrl && (
         <audio
@@ -167,17 +167,17 @@ export function AudioPlayer() {
       )}
 
       {/* Track Info */}
-      <div className="w-1/4 min-w-[150px] truncate">
+      <div className="w-full min-w-0 truncate sm:w-1/4 sm:min-w-[150px]">
         <div className="truncate text-sm font-semibold" title={selectedFile.name}>
           {selectedFile.name}
         </div>
-        <div className="text-xs text-muted-foreground truncate">
+        <div className="hidden truncate text-xs text-muted-foreground sm:block">
           {selectedFile.path}
         </div>
       </div>
 
       {/* Controls & Timeline */}
-      <div className="flex max-w-2xl flex-1 flex-col items-center justify-center gap-2">
+      <div className="flex w-full max-w-2xl flex-1 flex-col items-center justify-center gap-2">
         <div className="flex items-center gap-4">
           <button
             onClick={() => {
@@ -220,7 +220,7 @@ export function AudioPlayer() {
       </div>
 
       {/* Volume / Extra Controls */}
-      <div className="w-1/4 min-w-[150px] flex items-center justify-end gap-2">
+      <div className="flex w-full items-center justify-between gap-2 sm:w-1/4 sm:min-w-[150px] sm:justify-end">
         <button onClick={toggleMute} className="flex h-9 w-9 items-center justify-center rounded-full border border-transparent text-muted-foreground transition-[transform,color,background-color] hover:-translate-y-0.5 hover:bg-accent/80 hover:text-foreground">
           {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
         </button>
@@ -236,7 +236,7 @@ export function AudioPlayer() {
             if (audioRef.current) audioRef.current.volume = v;
             if (v > 0 && isMuted) setIsMuted(false);
           }}
-          className="h-1.5 w-24 cursor-pointer appearance-none rounded-full border-0 bg-secondary/90 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-[var(--panel-shadow)]"
+          className="h-1.5 min-w-0 flex-1 cursor-pointer appearance-none rounded-full border-0 bg-secondary/90 sm:w-24 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-[var(--panel-shadow)]"
         />
       </div>
     </div>
