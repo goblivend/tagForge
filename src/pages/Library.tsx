@@ -174,6 +174,7 @@ export default function Library() {
   const [showFindModal, setShowFindModal] = useState(false);
   const [findFilter, setFindFilter] = useState('');
   const [mobileView, setMobileView] = useState<'tracks' | 'details'>('tracks');
+  const [showRenamePanel, setShowRenamePanel] = useState(true);
 
   const [leftWidth, setLeftWidth] = useState(400); // Draggable resizer width
   const [isDragging, setIsDragging] = useState(false);
@@ -191,6 +192,14 @@ export default function Library() {
     startRect: { x: number; y: number; width: number; height: number };
   }>(null);
   const backgroundScanRef = React.useRef(0);
+
+  const getResponsiveLeftWidth = (viewportWidth: number) => {
+    if (viewportWidth >= 2560) return 560;
+    if (viewportWidth >= 1920) return 480;
+    if (viewportWidth >= 1600) return 420;
+    if (viewportWidth >= 1440) return 380;
+    return 340;
+  };
 
 
   const getPreviewNameForPreset = (format: string) => {
@@ -377,8 +386,10 @@ export default function Library() {
   // Make default left width responsive to screen size
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const w = window.innerWidth;
-      setLeftWidth(w >= 2000 ? 420 : w >= 1600 ? 360 : 300);
+      const updateLeftWidth = () => setLeftWidth(getResponsiveLeftWidth(window.innerWidth));
+      updateLeftWidth();
+      window.addEventListener('resize', updateLeftWidth);
+      return () => window.removeEventListener('resize', updateLeftWidth);
     }
   }, []);
 
@@ -392,6 +403,7 @@ export default function Library() {
       setSelectedFile(null);
       setMetadata(null);
       setMobileView('tracks');
+      setShowRenamePanel(true);
 
       const foundFiles = await scanDirectoryForAudio(handle);
       setFiles(foundFiles);
@@ -405,6 +417,7 @@ export default function Library() {
   const handleSelectFile = async (file: FileEntry) => {
     setSelectedFile(file);
     setMobileView('details');
+    setShowRenamePanel(true);
     setIsReading(true);
 
     try {
@@ -745,7 +758,7 @@ export default function Library() {
 
   return (
     <div className="relative flex h-full flex-col space-y-6" onMouseMove={(e) => { if (isDragging) setLeftWidth(e.clientX - 20) }} onMouseUp={() => setIsDragging(false)} onMouseLeave={() => setIsDragging(false)}>
-      <div className="flex shrink-0 flex-col justify-between gap-4 sm:flex-row sm:items-center">
+      <div className="flex shrink-0 flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Library</h1>
           <p className="mt-1 text-sm text-muted-foreground">Open a music folder, inspect tracks, and apply metadata changes without leaving the browser.</p>
@@ -809,7 +822,7 @@ export default function Library() {
           </button>
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col gap-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-3">
           <div className="flex items-center gap-2 lg:hidden">
             <button
               type="button"
@@ -964,7 +977,7 @@ export default function Library() {
                     </div>
                   ) : metadata ? (
                     <div className="flex-1 flex flex-col min-h-0">
-                      <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-border/70 bg-card/90 p-4 backdrop-blur-sm">
+                      <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-border/70 bg-card/90 p-3 backdrop-blur-sm">
                         <div className="min-w-0 pr-4">
                           <h2 className="text-base font-semibold truncate bg-transparent border-none appearance-none" title={selectedFile.name}>{selectedFile.name}</h2>
                           <p className="text-xs text-muted-foreground mt-0.5 truncate">{selectedFile.path}</p>
@@ -973,73 +986,175 @@ export default function Library() {
 
                       </div>
 
-                      <div className="flex-1 p-4 pb-12 content-visibility-auto">
-                        <form onSubmit={handleSave} className="mx-auto max-w-[500px] space-y-4 pb-4">
-                          <div className="space-y-1.5">
-                            <label className="text-sm font-medium text-foreground">Title</label>
-                            <input
-                              type="text"
-                              value={metadata.title || ''}
-                              onChange={(e) => handleChange('title', e.target.value)}
-                              className="w-full rounded-xl px-3 py-2"
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <label className="text-sm font-medium text-foreground">Artist</label>
-                            <input
-                              type="text"
-                              list="artists-list"
-                              value={metadata.artist || ''}
-                              onChange={(e) => handleChange('artist', e.target.value)}
-                              className="w-full rounded-xl px-3 py-2"
-                            />
-                            <datalist id="artists-list">
-                              {recentArtists.map(a => <option key={a} value={a} />)}
-                            </datalist>
-                          </div>
-
-                          <div className="space-y-2">
-                            <label className="text-sm font-medium text-foreground">Album</label>
-                            <input
-                              type="text"
-                              list="albums-list"
-                              value={metadata.album || ''}
-                              onChange={(e) => handleChange('album', e.target.value)}
-                              className="w-full rounded-xl px-3 py-2"
-                            />
-                            <datalist id="albums-list">
-                              {recentAlbums.map(a => <option key={a} value={a} />)}
-                            </datalist>
-                          </div>
-
-                          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <div className="space-y-2">
-                              <label className="text-sm font-medium text-foreground">Year / Date</label>
+                      <div className="flex-1 p-3 flex flex-col h-full min-h-0 lg:p-5">
+                        <form onSubmit={handleSave} className="flex flex-col h-full min-h-0 mx-auto w-full max-w-none pb-2 lg:grid lg:grid-cols-[minmax(0,1.6fr)_minmax(320px,400px)] xl:grid-cols-[minmax(0,1.9fr)_minmax(280px,360px)] 2xl:grid-cols-[minmax(0,1.8fr)_minmax(320px,420px)] 4xl:grid-cols-[minmax(0,1.6fr)_minmax(420px,580px)] lg:grid-rows-[auto,1fr] lg:gap-x-8 lg:gap-y-4 lg:h-auto">
+                          <div className="flex flex-col flex-1 min-h-0 space-y-3">
+                            <div className="space-y-1">
+                              <label className="text-sm font-medium text-foreground">Title</label>
                               <input
                                 type="text"
-                                value={metadata.date || ''}
-                                onChange={(e) => handleChange('date', e.target.value)}
+                                value={metadata.title || ''}
+                                onChange={(e) => handleChange('title', e.target.value)}
                                 className="w-full rounded-xl px-3 py-2"
                               />
                             </div>
-                            <div className="space-y-2">
-                              <label className="text-sm font-medium text-foreground">Genre</label>
-                              <input
-                                type="text"
-                                list="genres-list"
-                                value={metadata.genre || ''}
-                                onChange={(e) => handleChange('genre', e.target.value)}
-                                className="w-full rounded-xl px-3 py-2"
-                              />
-                              <datalist id="genres-list">
-                                {recentGenres.map(g => <option key={g} value={g} />)}
-                              </datalist>
+
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-2">
+                              <div className="space-y-1.5">
+                                <label className="text-sm font-medium text-foreground">Artist</label>
+                                <input
+                                  type="text"
+                                  list="artists-list"
+                                  value={metadata.artist || ''}
+                                  onChange={(e) => handleChange('artist', e.target.value)}
+                                  className="w-full rounded-xl px-3 py-2"
+                                />
+                                <datalist id="artists-list">
+                                  {recentArtists.map(a => <option key={a} value={a} />)}
+                                </datalist>
+                              </div>
+
+                              <div className="space-y-1.5">
+                                <label className="text-sm font-medium text-foreground">Album</label>
+                                <input
+                                  type="text"
+                                  list="albums-list"
+                                  value={metadata.album || ''}
+                                  onChange={(e) => handleChange('album', e.target.value)}
+                                  className="w-full rounded-xl px-3 py-2"
+                                />
+                                <datalist id="albums-list">
+                                  {recentAlbums.map(a => <option key={a} value={a} />)}
+                                </datalist>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-2">
+                              <div className="space-y-1.5">
+                                <label className="text-sm font-medium text-foreground">Year / Date</label>
+                                <input
+                                  type="text"
+                                  value={metadata.date || ''}
+                                  onChange={(e) => handleChange('date', e.target.value)}
+                                  className="w-full rounded-xl px-3 py-2"
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <label className="text-sm font-medium text-foreground">Genre</label>
+                                <input
+                                  type="text"
+                                  list="genres-list"
+                                  value={metadata.genre || ''}
+                                  onChange={(e) => handleChange('genre', e.target.value)}
+                                  className="w-full rounded-xl px-3 py-2"
+                                />
+                                <datalist id="genres-list">
+                                  {recentGenres.map(g => <option key={g} value={g} />)}
+                                </datalist>
+                              </div>
+                            </div>
+
+                            <div className="sticky bottom-0 z-10 flex flex-wrap items-center gap-3 border-t border-border/70 bg-card/95 pb-3 pt-3 shadow-[0_-10px_20px_-14px_rgba(15,23,42,0.28)] lg:static lg:mt-1.5 lg:border-t-0 lg:bg-transparent lg:px-0 lg:pt-0 lg:shadow-none">
+                              <button title="Shortcut: CTRL+S"
+                                type="submit"
+                                disabled={isSaving}
+                                className="rounded-xl bg-[linear-gradient(135deg,hsl(var(--primary-color)),hsl(var(--primary-dark)))] px-4 py-2 font-semibold text-primary-foreground shadow-[var(--panel-shadow)] transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-[var(--panel-shadow-lg)] disabled:opacity-50"
+                              >
+                                {isSaving ? 'Saving...' : 'Save Metadata'}
+                              </button>
+                              <button
+                                type="button"
+                                title="Shortcut: Escape"
+                                onClick={() => handleSelectFile(selectedFile)}
+                                disabled={isSaving}
+                                className="rounded-xl border border-border/70 bg-background/80 px-4 py-2 font-medium text-foreground shadow-[var(--panel-shadow)] transition-[transform,background-color] hover:-translate-y-0.5 hover:bg-accent/80 disabled:opacity-50"
+                              >
+                                Discard
+                              </button>
+                              {saveMessage && (
+                                <span className={`text-sm ${saveMessage.includes('Error') || saveMessage.includes('Failed') ? 'text-red-500' : ''}`} style={saveMessage.includes('Error') || saveMessage.includes('Failed') ? undefined : { color: "hsl(var(--success-color))" }}>
+                                  {saveMessage}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="space-y-2 rounded-2xl border border-border/80 bg-muted/30 p-3 shadow-[var(--panel-shadow)] flex flex-col flex-1 min-h-0 lg:mt-1.5 lg:overflow-hidden">
+                              <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                  <p className="text-xs text-muted-foreground uppercase font-semibold mb-1">Current Name</p>
+                                  <p className="max-w-full truncate text-sm font-mono">{selectedFile.name}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setShowRenamePanel((prev) => !prev)}
+                                  className="rounded-lg border border-border/70 bg-background/80 px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-accent/80"
+                                >
+                                  {showRenamePanel ? 'Hide Rename Presets' : 'Show Rename Presets'}
+                                </button>
+                              </div>
+
+                              {showRenamePanel && (
+                                <div className="space-y-2 flex-1 min-h-0 overflow-y-auto">
+                                  <p className="text-xs text-muted-foreground uppercase font-semibold">Rename Presets</p>
+                                  <div className="flex flex-col gap-2">
+                                    {filenamePresets.map(preset => {
+                                      const preview = getPreviewNameForPreset(preset.format);
+                                      const isSame = preview === selectedFile.name;
+
+                                      return (
+                                        <div
+                                          key={preset.id}
+                                          className={`flex flex-col gap-2 rounded-xl border p-3 transition-[transform,background-color,border-color,box-shadow] ${isSame ? 'opacity-50 cursor-not-allowed bg-muted/50' : isSaving ? 'opacity-50 cursor-wait bg-background' : 'cursor-pointer bg-background/85 shadow-[var(--panel-shadow)] hover:-translate-y-0.5 hover:border-primary/30 hover:bg-accent/80 hover:shadow-[var(--panel-shadow-lg)]'}`}
+                                          onClick={async () => {
+                                            if (isSame || isSaving || !preview) return;
+
+                                            try {
+                                              setIsSaving(true);
+                                              const hasPerm = await checkPermission(selectedFile.handle, true);
+                                              if (!hasPerm) {
+                                                setSaveMessage('Permission denied for rename.');
+                                                setTimeout(() => setSaveMessage(null), 3000);
+                                                return;
+                                              }
+
+                                              const ext = selectedFile.name.split('.').pop() || 'mp3';
+                                              const newName = preview.endsWith(`.${ext}`) ? preview : `${preview}.${ext}`;
+                                              const result = await (selectedFile.handle as any).moveAndRename(newName);
+                                              if (result) {
+                                                setSaveMessage(`Renamed to ${newName}`);
+                                                setTimeout(() => setSaveMessage(null), 3000);
+                                                const updated = { ...selectedFile, name: newName };
+                                                setSelectedFile(updated);
+                                                setFiles(files.map(file => file.path === selectedFile.path ? { ...file, name: newName } : file));
+                                              }
+                                            } catch (e) {
+                                              console.error('Rename error', e);
+                                              setSaveMessage('Rename failed.');
+                                              setTimeout(() => setSaveMessage(null), 3000);
+                                            } finally {
+                                              setIsSaving(false);
+                                            }
+                                          }}
+                                        >
+                                          <div className="flex items-center justify-between gap-3">
+                                            <span className="text-sm font-medium text-foreground">{preset.name}</span>
+                                            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{preset.format}</span>
+                                          </div>
+                                          <div className="truncate text-xs text-muted-foreground">{preset.format}</div>
+                                          <div className="truncate font-mono text-xs" style={{ color: "hsl(var(--success-color))" }}>
+                                            {preview}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
 
-                          <div className="space-y-4 border-t border-border/70 pt-4">
-                            <div className="text-sm font-medium text-foreground flex items-center justify-between gap-4">
+                          <div className="space-y-3 border-t border-border/70 pt-3 lg:border-t-0 lg:pt-0">
+                            <div className="text-sm font-medium text-foreground flex items-center justify-between gap-3">
                               <span>Cover Art</span>
                               <div className="flex flex-wrap items-center gap-1.5 shrink-0 isolate">
                                 <button type="button" title="Use cover from an existing file in this folder (same album first)" className="flex items-center gap-1 rounded-lg border border-border/70 bg-background/80 p-1 px-2 text-xs text-muted-foreground transition-colors hover:bg-accent/80 hover:text-foreground" onClick={() => setShowFindModal(true)}>
@@ -1096,7 +1211,7 @@ export default function Library() {
                                 </button>
                               </div>
                             </div>
-                            <div className="group relative mb-4 flex aspect-square w-full max-w-[250px] items-center justify-center overflow-hidden rounded-2xl border border-border/70 bg-muted/30 shadow-[var(--panel-shadow)]">
+                            <div className="group relative flex aspect-square w-full max-w-[340px] items-center justify-center overflow-hidden rounded-2xl border border-border/70 bg-muted/30 shadow-[var(--panel-shadow)] lg:max-w-none lg:aspect-[4/3] xl:aspect-square 2xl:aspect-[4/3] 4xl:aspect-video">
                               {hasValidPicture(metadata.picture) ? (
                                 <>
                                   <CoverThumb
@@ -1117,110 +1232,14 @@ export default function Library() {
                                   </div>
                                 </>
                               ) : (
-                                <div className="text-muted-foreground flex flex-col items-center gap-2 opacity-50 p-4">
+                                <div className="text-muted-foreground flex flex-col items-center gap-2 opacity-50 p-3">
                                   <ImageIcon size={48} className="stroke-[1.5]" />
                                   <span className="text-sm font-medium">No Cover Art</span>
                                 </div>
                               )}
                             </div>
                           </div>
-
-                          <div className="sticky bottom-0 z-10 flex items-center gap-4 border-t border-border/70 bg-card/95 pb-4 pt-4 shadow-[0_-10px_20px_-14px_rgba(15,23,42,0.28)]">
-                            <button title="Shortcut: CTRL+S"
-                              type="submit"
-                              disabled={isSaving}
-                              className="rounded-xl bg-[linear-gradient(135deg,hsl(var(--primary-color)),hsl(var(--primary-dark)))] px-4 py-2 font-semibold text-primary-foreground shadow-[var(--panel-shadow)] transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-[var(--panel-shadow-lg)] disabled:opacity-50"
-                            >
-                              {isSaving ? 'Saving...' : 'Save Metadata'}
-                            </button>
-                            <button
-                              type="button"
-                              title="Shortcut: Escape"
-                              onClick={() => handleSelectFile(selectedFile)}
-                              disabled={isSaving}
-                              className="rounded-xl border border-border/70 bg-background/80 px-4 py-2 font-medium text-foreground shadow-[var(--panel-shadow)] transition-[transform,background-color] hover:-translate-y-0.5 hover:bg-accent/80 disabled:opacity-50"
-                            >
-                              Discard
-                            </button>
-                            {saveMessage && (
-                              <span className={`ml-2 text-sm ${saveMessage.includes('Error') || saveMessage.includes('Failed') ? 'text-red-500' : ''}`} style={saveMessage.includes('Error') || saveMessage.includes('Failed') ? undefined : { color: "hsl(var(--success-color))" }}>
-                                {saveMessage}
-                              </span>
-                            )}
-                          </div>
                         </form>
-
-                        <div className="mx-auto mt-4 max-w-lg border-t border-border/70 pt-6">
-                          <h3 className="text-md font-medium text-foreground mb-4">Rename File</h3>
-                          <div className="space-y-4 rounded-2xl border border-border/80 bg-muted/30 p-4 shadow-[var(--panel-shadow)]">
-                            <div>
-                              <p className="text-xs text-muted-foreground uppercase font-semibold mb-1">Current Name</p>
-                              <p className="text-sm font-mono truncate">{selectedFile.name}</p>
-                            </div>
-                            <div className="space-y-2">
-                              <p className="text-xs text-muted-foreground uppercase font-semibold">Rename Presets</p>
-                              <div className="flex flex-col gap-2">
-                                {filenamePresets.map(preset => {
-                                  const preview = getPreviewNameForPreset(preset.format);
-                                  const isSame = preview === selectedFile.name;
-
-                                  return (
-                                    <div
-                                      key={preset.id}
-                                      className={`flex flex-col gap-2 rounded-xl border p-3 transition-[transform,background-color,border-color,box-shadow] ${isSame ? 'opacity-50 cursor-not-allowed bg-muted/50' : isSaving ? 'opacity-50 cursor-wait bg-background' : 'cursor-pointer bg-background/85 shadow-[var(--panel-shadow)] hover:-translate-y-0.5 hover:border-primary/30 hover:bg-accent/80 hover:shadow-[var(--panel-shadow-lg)]'}`}
-                                      onClick={async () => {
-                                        if (isSame || isSaving || !preview) return;
-
-                                        try {
-                                          setIsSaving(true);
-                                          // @ts-ignore - 'move' is Chromium-specific but works in File System Access API
-                                          if (typeof selectedFile.handle.move === 'function') {
-                                            // @ts-ignore
-                                            await selectedFile.handle.move(preview);
-
-                                            // Re-scan folder to update tree locally
-                                            if (folderHandle) {
-                                              const foundFiles = await scanDirectoryForAudio(folderHandle);
-                                              setFiles(foundFiles);
-
-                                              // Re-select conceptually by fetching new entry
-                                              const newEntry = foundFiles.find(f => f.name === preview);
-                                              if (newEntry) {
-                                                setSelectedFile(newEntry);
-                                                if (false) {
-                                                  window.dispatchEvent(new CustomEvent('toggle-audio-play'));
-                                                }
-                                                useAppStore.getState().markFileAsEdited(newEntry.path);
-                                              }
-                                            }
-                                            setSaveMessage('Renamed successfully!');
-                                            setTimeout(() => setSaveMessage(null), 3000);
-                                          } else {
-                                            alert("Your browser does not support renaming files via FileSystemFileHandle.move(). Please use Chrome or Edge 105+.");
-                                          }
-                                        } catch (err) {
-                                          console.error(err);
-                                          alert("Failed to rename file. Make sure it isn't playing or opened in another program.");
-                                        } finally {
-                                          setIsSaving(false);
-                                        }
-                                      }}
-                                    >
-                                      <div className="flex justify-between items-center text-xs">
-                                        <span className="font-semibold text-foreground/80">{preset.name}</span>
-                                        <span className="text-muted-foreground font-mono text-[10px]">{preset.format}</span>
-                                      </div>
-                                      <div className="truncate text-sm font-mono" style={{ color: "hsl(var(--success-color))" }}>
-                                        {preview}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                            <p className="text-xs text-center text-muted-foreground pt-1">You can change presets in Settings</p>
-                          </div>
-                        </div>
                       </div>
                     </div>
                   ) : null}
