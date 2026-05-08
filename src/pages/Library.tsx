@@ -447,6 +447,53 @@ export default function Library() {
     }
   };
 
+  const handleAutoCropCenter11 = async (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    if (!metadata || !hasValidPicture(metadata.picture)) return;
+
+    try {
+      const blob = new Blob([metadata.picture.data], { type: metadata.picture.format });
+      const img = new Image();
+      const loadPromise = new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = reject;
+      });
+      img.src = URL.createObjectURL(blob);
+      await loadPromise;
+      URL.revokeObjectURL(img.src);
+
+      // Calculate center 1:1 crop
+      const size = Math.min(img.naturalWidth, img.naturalHeight);
+      const startX = Math.round((img.naturalWidth - size) / 2);
+      const startY = Math.round((img.naturalHeight - size) / 2);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('No canvas context');
+
+      // Draw cropped area
+      ctx.drawImage(img, startX, startY, size, size, 0, 0, size, size);
+
+      const outFormat = metadata.picture.format || 'image/jpeg';
+      const outBlob: Blob | null = await new Promise((res) => canvas.toBlob(res, outFormat, 0.92));
+      if (!outBlob) throw new Error('Failed to create cropped image');
+
+      const arrayBuffer = await outBlob.arrayBuffer();
+      const newPic = { format: outBlob.type || outFormat, data: arrayBuffer };
+      handleChange('picture', newPic as any);
+      if (selectedFile) useAppStore.getState().updateFileMetadata(selectedFile.path, { picture: newPic });
+
+      setSaveMessage('Auto 1:1 crop applied');
+      setTimeout(() => setSaveMessage(null), 2000);
+    } catch (err) {
+      console.error('Auto crop failed', err);
+      setSaveMessage('Failed to auto crop');
+      setTimeout(() => setSaveMessage(null), 3000);
+    }
+  };
+
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!selectedFile || !metadata) return;
@@ -892,7 +939,7 @@ export default function Library() {
                                   <CoverThumb
                                     picture={file.metadata?.picture}
                                     alt={file.name + ' cover'}
-                                    className="h-full w-full object-cover"
+                                    className="h-full w-full object-contain"
                                     onLoadError={() => removeInvalidPicture(file.path, 'library-mobile-list')}
                                   />
                                 </div>
@@ -938,7 +985,7 @@ export default function Library() {
                                     <CoverThumb
                                       picture={file.metadata?.picture}
                                       alt={file.name + ' cover'}
-                                      className="w-full h-full object-cover"
+                                      className="w-full h-full object-contain"
                                       onLoadError={() => removeInvalidPicture(file.path, 'library-list')}
                                     />
                                   </div>
@@ -1217,10 +1264,11 @@ export default function Library() {
                                   <CoverThumb
                                     picture={metadata.picture as any}
                                     alt="Cover"
-                                    className="w-full h-full object-cover"
+                                    className="w-full h-full object-contain"
                                     onLoadError={() => removeInvalidPicture(selectedFile?.path, 'editor')}
                                   />
                                   <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+                                    <button type="button" onClick={handleAutoCropCenter11} className="rounded-lg border border-border/70 bg-background/80 p-1 px-2 text-xs text-muted-foreground hover:bg-accent/80 hover:text-foreground transition-colors">Auto 1:1</button>
                                     <button type="button" onClick={() => setShowCropModal(true)} className="rounded-lg border border-border/70 bg-background/80 p-1 px-2 text-xs text-muted-foreground">Edit</button>
                                     <button type="button" onClick={() => {
                                       const obj = { ...metadata };
@@ -1306,7 +1354,7 @@ export default function Library() {
                         <CoverThumb
                           picture={f.metadata?.picture}
                           alt={f.name + ' cover'}
-                          className="w-full h-full object-cover"
+                          className="w-full h-full object-contain"
                           onLoadError={() => removeInvalidPicture(f.path, 'find-same-album')}
                         />
                       </div>
@@ -1325,7 +1373,7 @@ export default function Library() {
                         <CoverThumb
                           picture={f.metadata?.picture}
                           alt={f.name + ' cover'}
-                          className="w-full h-full object-cover"
+                          className="w-full h-full object-contain"
                           onLoadError={() => removeInvalidPicture(f.path, 'find-other-covers')}
                         />
                       </div>

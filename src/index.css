@@ -157,7 +157,10 @@
   input,
   textarea,
   select {
-    @apply border-input bg-background text-foreground outline-none transition-[border-color, box-shadow, background-color];
+    @apply border-input bg-background text-foreground outline-none;
+    transition-property: border-color, box-shadow, background-color;
+    transition-duration: 150ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: 0 1px 2px hsl(var(--shadow-2));
   }
 
