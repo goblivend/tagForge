@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from "react-router-dom";
-import { ListMusic, Settings, Home, List } from "lucide-react";
+import { ListMusic, Settings, Home, List, Tags } from "lucide-react";
 import { AudioPlayer } from "../player/AudioPlayer";
 import { useAppStore } from "../../store";
 import { ThemeToggle } from "../theme/ThemeToggle";
@@ -24,7 +24,7 @@ export function AppLayout() {
           <ThemeToggle theme={theme} onToggle={toggleTheme} />
         </div>
 
-        <nav className="mt-3 grid grid-cols-3 gap-2 text-sm font-medium">
+        <nav className="mt-3 grid grid-cols-4 gap-2 text-sm font-medium">
           <NavLink
             to="/"
             className={({ isActive }) =>
@@ -33,6 +33,15 @@ export function AppLayout() {
           >
             <Home className="h-4 w-4" />
             Library
+          </NavLink>
+          <NavLink
+            to="/tag-operations"
+            className={({ isActive }) =>
+              `flex items-center justify-center gap-2 rounded-xl px-3 py-2 transition-colors ${isActive ? "bg-[linear-gradient(135deg,hsl(var(--primary-color)),hsl(var(--primary-dark)))] text-primary-foreground shadow-[var(--panel-shadow)]" : "bg-background/70 text-muted-foreground hover:bg-accent/80 hover:text-accent-foreground"}`
+            }
+          >
+            <Tags className="h-4 w-4" />
+            Tags
           </NavLink>
           <NavLink
             to="/playlists"
@@ -79,6 +88,16 @@ export function AppLayout() {
           >
             <Home className="h-4 w-4" />
             Library
+          </NavLink>
+          <NavLink
+            to="/tag-operations"
+            className={({ isActive }) =>
+              `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-[transform,box-shadow,background-color,color] ${isActive ? "bg-[linear-gradient(135deg,hsl(var(--primary-color)),hsl(var(--primary-dark)))] text-primary-foreground shadow-[var(--panel-shadow)]" : "text-muted-foreground hover:-translate-y-0.5 hover:bg-accent/80 hover:text-accent-foreground"
+              }`
+            }
+          >
+            <Tags className="h-4 w-4" />
+            Tag Operations
           </NavLink>
           <NavLink
             to="/playlists"

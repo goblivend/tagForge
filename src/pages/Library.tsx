@@ -3,6 +3,7 @@ import { useAppStore, FileEntry } from "../store";
 import { openDirectory, scanDirectoryForAudio, scanFilesForAudio, checkPermission, getFileFromEntry } from "../services/fsAccess";
 import { readMetadata, writeMetadata, AudioTags } from "../services/metadata";
 import { MetadataSearchModal } from "../components/library/MetadataSearchModal";
+import { getPreviewNameForPreset, getRenamedPathForFile } from "../lib/filenamePresets";
 
 import { Settings2, CheckCircle2, Image as ImageIcon, UploadCloud, Link as LinkIcon, Clipboard, Keyboard, Search, X } from "lucide-react";
 
@@ -203,35 +204,6 @@ export default function Library() {
     if (viewportWidth >= 1600) return 420;
     if (viewportWidth >= 1440) return 380;
     return 340;
-  };
-
-
-  const getPreviewNameForPreset = (format: string) => {
-    if (!metadata || !selectedFile) return '';
-    const ext = selectedFile.name.split('.').pop()?.toLowerCase() || 'mp3';
-
-    let computed = format;
-
-    // Replace tokens safely using regex logic
-    computed = computed.replace(/\{artist\}/gi, metadata.artist?.trim() || 'Unknown Artist');
-    computed = computed.replace(/\{title\}/gi, metadata.title?.trim() || 'Unknown Title');
-    computed = computed.replace(/\{album\}/gi, metadata.album?.trim() || 'Unknown Album');
-    computed = computed.replace(/\{genre\}/gi, metadata.genre?.trim() || 'Unknown Genre');
-    computed = computed.replace(/\{date\}/gi, metadata.date?.trim() || 'Unknown Date');
-    computed = computed.replace(/\{year\}/gi, metadata.date?.substring(0, 4) || 'Unknown Year');
-
-    // Clean up empty gaps when tokens resolve to empty strings gracefully
-    computed = computed.replace(/\s+-\s+$/, '').replace(/^\s+-\s+/, '').replace(/\s{2,}/g, ' ');
-
-    computed = computed.replace(/[<>:"/\\|?*]+/g, '_').trim();
-
-    // ensure extension stays
-    return computed.endsWith(`.${ext}`) ? computed : `${computed}.${ext}`;
-  };
-
-  const getRenamedPathForFile = (path: string, nextName: string) => {
-    const slashIndex = path.lastIndexOf('/');
-    return slashIndex >= 0 ? `${path.slice(0, slashIndex + 1)}${nextName}` : nextName;
   };
 
   // Background incremental cover scanner: progressively reads artwork for files without picture
@@ -590,16 +562,16 @@ export default function Library() {
       }
 
       const domFile = await getFileFromEntry(selectedFile);
-      const success = await writeMetadata(domFile, selectedFile.handle, metadata);
-      if (success) {
+      const saveResult = await writeMetadata(domFile, selectedFile.handle, metadata);
+      if (saveResult.success) {
         addRecentMetadata(metadata);
         markFileAsEdited(selectedFile.path);
         updateFileMetadata(selectedFile.path, metadata);
         setSaveMessage('Saved successfully!');
         setTimeout(() => setSaveMessage(null), 3000);
       } else {
-        setSaveMessage('Failed to save metadata.');
-        setTimeout(() => setSaveMessage(null), 3000);
+        setSaveMessage(`Failed to save metadata: ${saveResult.error}`);
+        setTimeout(() => setSaveMessage(null), 4000);
       }
     } catch (e) {
       console.error("Error saving:", e);
@@ -1235,7 +1207,7 @@ export default function Library() {
                                   <p className="text-xs text-muted-foreground uppercase font-semibold">Rename Presets</p>
                                   <div className="flex flex-col gap-2">
                                     {filenamePresets.map(preset => {
-                                      const preview = getPreviewNameForPreset(preset.format);
+                                      const preview = getPreviewNameForPreset(preset.format, metadata, selectedFile.name);
                                       const isSame = preview === selectedFile.name;
 
                                       return (

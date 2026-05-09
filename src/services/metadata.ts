@@ -1,4 +1,5 @@
 import MP3Tag from 'mp3tag.js';
+import { checkPermission } from './fsAccess';
 
 export interface AudioTags {
   title: string;
@@ -10,6 +11,10 @@ export interface AudioTags {
     format: string;
     data: ArrayBuffer;
   };
+}
+
+function getFileExtension(filename: string): string {
+  return filename.split('.').pop()?.toLowerCase() || '';
 }
 
 export async function readMetadata(file: File): Promise<AudioTags> {
@@ -53,6 +58,21 @@ export async function readMetadata(file: File): Promise<AudioTags> {
 }
 
 export async function writeMetadata(file: File, fileHandle: FileSystemFileHandle, tags: AudioTags) {
+  const ext = getFileExtension(file.name);
+
+  if (ext === 'mp3') {
+    return await writeMp3Metadata(file, fileHandle, tags);
+  } else if (ext === 'm4a' || ext === 'm4b' || ext === 'm4p') {
+    return await writeM4aMetadata(file, fileHandle, tags);
+  } else {
+    return {
+      success: false,
+      error: `Format .${ext} is not yet supported for metadata writing. Supported formats: MP3, M4A.`
+    };
+  }
+}
+
+async function writeMp3Metadata(file: File, fileHandle: FileSystemFileHandle, tags: AudioTags) {
   try {
     // Read file into ArrayBuffer
     const arrayBuffer = await file.arrayBuffer();
@@ -100,21 +120,70 @@ export async function writeMetadata(file: File, fileHandle: FileSystemFileHandle
     mp3tag.save();
 
     if (mp3tag.error !== '') {
-      console.error("mp3tag save error:", mp3tag.error);
-      return false;
+      const message = `mp3tag save error: ${mp3tag.error}`;
+      console.error(message);
+      return { success: false, error: message };
     }
 
     const newFileBuffer = mp3tag.buffer; // updated buffer
 
     // Use FileSystem Access API to write back to the same file.
     // createWritable() replaces the file atomically when using standard config.
-    const writable = await fileHandle.createWritable();
-    await writable.write(newFileBuffer);
-    await writable.close();
+    try {
+      const writable = await fileHandle.createWritable();
+      await writable.write(newFileBuffer);
+      await writable.close();
+      return { success: true as const };
+    } catch (writeError) {
+      const writeMsg = writeError instanceof Error ? writeError.message : String(writeError);
 
-    return true;
+      // Detect stale handle error: "state cached in an interface object was made but the state had changed"
+      if (writeMsg.includes('state had changed since it was read')) {
+        // Try to refresh permissions and retry once
+        try {
+          const hasPerm = await checkPermission(fileHandle, true);
+          if (hasPerm) {
+            const retryWritable = await fileHandle.createWritable();
+            await retryWritable.write(newFileBuffer);
+            await retryWritable.close();
+            return { success: true as const };
+          }
+        } catch (retryError) {
+          const retryMsg = retryError instanceof Error ? retryError.message : String(retryError);
+          return {
+            success: false,
+            error: `File was modified on disk. Try reloading the folder: ${retryMsg}`,
+          };
+        }
+      }
+
+      return { success: false, error: writeMsg };
+    }
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error("Error writing metadata", error);
-    return false;
+    return { success: false, error: message };
+  }
+}
+
+async function writeM4aMetadata(_file: File, _fileHandle: FileSystemFileHandle, _tags: AudioTags) {
+  try {
+    // M4A metadata writing requires full MP4 atom structure parsing and rebuilding
+    // This is complex to implement correctly without a dedicated library.
+    // For proper M4A support, consider using:
+    // - mp4box.js library (needs to be installed: npm install mp4box)
+    // - Or external audio tagging tools like TagLib, Mutagen, or ffmpeg
+
+    // Return helpful message to user
+    return {
+      success: false,
+      error: 'M4A metadata writing is not yet fully implemented. ' +
+             'Please use an external audio tagger (iTunes, foobar2000, MediaInfo) ' +
+             'to edit M4A files, or help improve this feature by contributing to the project.'
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Error writing M4A metadata", error);
+    return { success: false, error: message };
   }
 }
