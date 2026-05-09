@@ -266,19 +266,42 @@ export default function Library() {
           }
           const tags = await readMetadata(domFile);
           if (cancelled || runId !== backgroundScanRef.current) break;
+
+          // Build partial metadata update (only include non-empty values)
+          const metaUpdate: Partial<AudioTags> = {
+            title: tags.title || undefined,
+            artist: tags.artist || undefined,
+            album: tags.album || undefined,
+            date: tags.date || undefined,
+            genre: tags.genre || undefined,
+          };
+
           if (tags.picture) {
-            debugCover('[cover-scan] picture found', {
-              path: f.path,
-              name: f.name,
-              format: tags.picture.format,
-              bytes: tags.picture.data.byteLength,
-            });
-            useAppStore.getState().updateFileMetadata(f.path, { picture: tags.picture });
+            metaUpdate.picture = tags.picture;
+          }
+
+          // Remove undefined fields so we don't overwrite existing cached values with undefined
+          Object.keys(metaUpdate).forEach((k) => {
+            if ((metaUpdate as any)[k] === undefined) delete (metaUpdate as any)[k];
+          });
+
+          if (Object.keys(metaUpdate).length > 0) {
+            useAppStore.getState().updateFileMetadata(f.path, metaUpdate);
+
             if (selectedPath === f.path) {
-              setMetadata(prev => prev ? { ...prev, picture: tags.picture } : prev);
+              setMetadata(prev => prev ? ({ ...prev, ...metaUpdate } as AudioTags) : (metaUpdate as AudioTags));
             }
-          } else if (DEBUG_COVERS) {
-            debugCover('[cover-scan] no picture', { path: f.path, name: f.name });
+
+            if (tags.picture) {
+              debugCover('[cover-scan] picture found', {
+                path: f.path,
+                name: f.name,
+                format: tags.picture.format,
+                bytes: tags.picture.data.byteLength,
+              });
+            } else if (DEBUG_COVERS) {
+              debugCover('[cover-scan] no picture', { path: f.path, name: f.name });
+            }
           }
         } catch (e) {
           console.error('background cover scan error', e);
