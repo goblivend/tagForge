@@ -17,7 +17,8 @@ function sanitizeMetadata(metadata?: Partial<AudioTags>) {
 }
 
 export interface FileEntry {
-  handle: FileSystemFileHandle;
+  handle?: FileSystemFileHandle;
+  file?: File;
   path: string;
   name: string;
   isEdited?: boolean;

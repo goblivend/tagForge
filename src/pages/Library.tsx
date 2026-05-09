@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useAppStore, FileEntry } from "../store";
-import { openDirectory, scanDirectoryForAudio, checkPermission } from "../services/fsAccess";
+import { openDirectory, scanDirectoryForAudio, scanFilesForAudio, checkPermission, getFileFromEntry } from "../services/fsAccess";
 import { readMetadata, writeMetadata, AudioTags } from "../services/metadata";
+import { MetadataSearchModal } from "../components/library/MetadataSearchModal";
 
 import { Settings2, CheckCircle2, Image as ImageIcon, UploadCloud, Link as LinkIcon, Clipboard, Keyboard, Search, X } from "lucide-react";
 
@@ -175,6 +176,9 @@ export default function Library() {
   const [findFilter, setFindFilter] = useState('');
   const [mobileView, setMobileView] = useState<'tracks' | 'details'>('tracks');
   const [showRenamePanel, setShowRenamePanel] = useState(true);
+  const [isMetadataModalOpen, setIsMetadataModalOpen] = useState(false);
+  const [isReadOnlyImport, setIsReadOnlyImport] = useState(false);
+  const [folderLabel, setFolderLabel] = useState<string | null>(null);
 
   const [leftWidth, setLeftWidth] = useState(400); // Draggable resizer width
   const [isDragging, setIsDragging] = useState(false);
@@ -225,6 +229,11 @@ export default function Library() {
     return computed.endsWith(`.${ext}`) ? computed : `${computed}.${ext}`;
   };
 
+  const getRenamedPathForFile = (path: string, nextName: string) => {
+    const slashIndex = path.lastIndexOf('/');
+    return slashIndex >= 0 ? `${path.slice(0, slashIndex + 1)}${nextName}` : nextName;
+  };
+
   // Background incremental cover scanner: progressively reads artwork for files without picture
   useEffect(() => {
     let cancelled = false;
@@ -250,9 +259,11 @@ export default function Library() {
         if (f.metadata?.picture) continue;
 
         try {
-          const hasPerm = await checkPermission(f.handle, false);
-          if (!hasPerm) continue;
-          const domFile = await f.handle.getFile();
+          const domFile = await getFileFromEntry(f);
+          if (f.handle) {
+            const hasPerm = await checkPermission(f.handle, false);
+            if (!hasPerm) continue;
+          }
           const tags = await readMetadata(domFile);
           if (cancelled || runId !== backgroundScanRef.current) break;
           if (tags.picture) {
@@ -395,17 +406,24 @@ export default function Library() {
 
   const handleOpenFolder = async () => {
     try {
-      const handle = await openDirectory();
-      if (!handle) return;
+      const selection = await openDirectory();
+      if (!selection) return;
 
-      setFolderHandle(handle);
       setScanning(true);
       setSelectedFile(null);
       setMetadata(null);
       setMobileView('tracks');
       setShowRenamePanel(true);
 
-      const foundFiles = await scanDirectoryForAudio(handle);
+      const foundFiles = selection.mode === 'directory'
+        ? await scanDirectoryForAudio(selection.handle)
+        : scanFilesForAudio(selection.files);
+
+      setIsReadOnlyImport(selection.mode === 'files');
+      setFolderLabel(selection.mode === 'directory'
+        ? selection.handle.name
+        : (foundFiles[0]?.path.split('/')[0] || 'Imported Folder'));
+      setFolderHandle(selection.mode === 'directory' ? selection.handle : null);
       setFiles(foundFiles);
     } catch (e) {
       console.error(e);
@@ -421,14 +439,16 @@ export default function Library() {
     setIsReading(true);
 
     try {
-      const hasPerm = await checkPermission(file.handle, true);
-      if (!hasPerm) {
-        alert("Permission to access file was denied.");
-        setIsReading(false);
-        return;
+      if (file.handle) {
+        const hasPerm = await checkPermission(file.handle, true);
+        if (!hasPerm) {
+          alert("Permission to access file was denied.");
+          setIsReading(false);
+          return;
+        }
       }
 
-      const domFile = await file.handle.getFile();
+      const domFile = await getFileFromEntry(file);
       const tags = await readMetadata(domFile);
       setMetadata(tags);
       addRecentMetadata(tags);
@@ -494,12 +514,43 @@ export default function Library() {
     }
   };
 
+  const handleApplyMetadata = (newTags: Partial<AudioTags>) => {
+    if (!metadata) return;
+
+    setMetadata({
+      ...metadata,
+      title: newTags.title !== undefined ? newTags.title : metadata.title,
+      artist: newTags.artist !== undefined ? newTags.artist : metadata.artist,
+      album: newTags.album !== undefined ? newTags.album : metadata.album,
+      date: newTags.date !== undefined ? newTags.date : metadata.date,
+      genre: newTags.genre !== undefined ? newTags.genre : metadata.genre,
+      picture: newTags.picture !== undefined ? newTags.picture : metadata.picture
+    });
+
+    if (selectedFile) {
+      updateFileMetadata(selectedFile.path, {
+        title: newTags.title,
+        artist: newTags.artist,
+        album: newTags.album,
+        genre: newTags.genre,
+        ...(newTags.picture !== undefined ? { picture: newTags.picture } : {})
+      });
+    }
+  };
+
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!selectedFile || !metadata) return;
 
+    if (!selectedFile.handle) {
+      setSaveMessage('Read-only browser import: saving is not available here. Use Chrome or Edge to edit and write tags.');
+      setTimeout(() => setSaveMessage(null), 4000);
+      return;
+    }
+
     setIsSaving(true);
     setSaveMessage(null);
+
     try {
       const ext = selectedFile.name.split('.').pop()?.toLowerCase();
       if (ext !== 'mp3') {
@@ -515,7 +566,7 @@ export default function Library() {
         return;
       }
 
-      const domFile = await selectedFile.handle.getFile();
+      const domFile = await getFileFromEntry(selectedFile);
       const success = await writeMetadata(domFile, selectedFile.handle, metadata);
       if (success) {
         addRecentMetadata(metadata);
@@ -844,7 +895,7 @@ export default function Library() {
             </div>
           )}
 
-          {folderHandle && (
+          {(folderHandle || files.length > 0) && (
             <button title="Shortcut: CTRL+O"
               onClick={handleOpenFolder}
               className="rounded-xl bg-[linear-gradient(135deg,hsl(var(--primary-color)),hsl(var(--primary-dark)))] px-4 py-2 text-sm font-semibold text-primary-foreground shadow-[var(--panel-shadow)] transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-[var(--panel-shadow-lg)]"
@@ -855,7 +906,7 @@ export default function Library() {
         </div>
       </div>
 
-      {!folderHandle ? (
+      {!folderHandle && files.length === 0 ? (
         <div className="panel-strong flex flex-1 flex-col items-center justify-center rounded-2xl p-8 text-center">
           <h3 className="text-lg font-medium text-card-foreground">No folder selected</h3>
           <p className="text-sm text-muted-foreground mt-2 mb-4">
@@ -906,7 +957,9 @@ export default function Library() {
                   <div className="flex h-full flex-col">
                     <div className="flex shrink-0 items-center justify-between border-b border-border/70 bg-muted/35 p-3 text-xs font-semibold uppercase text-muted-foreground select-none">
                       <div className="flex-1 min-w-[200px] flex items-center gap-2 cursor-pointer hover:text-foreground" onClick={() => handleSort('filename')}>
-                        <span title={folderHandle.name}>{folderHandle.name} ({files.length}) {getSortIcon('filename')}</span>
+                        <span title={folderHandle?.name || folderLabel || 'Imported Folder'}>
+                          {folderHandle?.name || folderLabel || 'Imported Folder'} ({files.length}) {getSortIcon('filename')}
+                        </span>
                       </div>
                       {!hiddenColumns['title'] && <div className="w-[120px] shrink-0 pl-2 border-l cursor-pointer hover:text-foreground" onClick={() => handleSort('title')}>Title {getSortIcon('title')}</div>}
                       {!hiddenColumns['artist'] && <div className="w-[120px] shrink-0 pl-2 border-l cursor-pointer hover:text-foreground" onClick={() => handleSort('artist')}>Artist {getSortIcon('artist')}</div>}
@@ -1111,6 +1164,14 @@ export default function Library() {
                               </button>
                               <button
                                 type="button"
+                                onClick={() => setIsMetadataModalOpen(true)}
+                                disabled={isSaving}
+                                className="rounded-xl bg-[linear-gradient(135deg,hsl(var(--primary-color)),hsl(var(--primary-dark)))] px-4 py-2 font-semibold text-primary-foreground shadow-[var(--panel-shadow)] transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-[var(--panel-shadow-lg)] disabled:opacity-50"
+                              >
+                                Auto-Tag
+                              </button>
+                              <button
+                                type="button"
                                 title="Shortcut: Escape"
                                 onClick={() => handleSelectFile(selectedFile)}
                                 disabled={isSaving}
@@ -1140,6 +1201,12 @@ export default function Library() {
                                 </button>
                               </div>
 
+                              {isReadOnlyImport && (
+                                <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                                  This browser imported the folder in read-only mode. You can browse and edit metadata in memory, but saving and renaming require Chrome or Edge.
+                                </p>
+                              )}
+
                               {showRenamePanel && (
                                 <div className="space-y-2 flex-1 min-h-0 overflow-y-auto">
                                   <p className="text-xs text-muted-foreground uppercase font-semibold">Rename Presets</p>
@@ -1157,6 +1224,9 @@ export default function Library() {
 
                                             try {
                                               setIsSaving(true);
+                                              if (!selectedFile.handle) {
+                                                throw new Error('Read-only browser import: file renaming is not available in this browser.');
+                                              }
                                               const hasPerm = await checkPermission(selectedFile.handle, true);
                                               if (!hasPerm) {
                                                 setSaveMessage('Permission denied for rename.');
@@ -1166,17 +1236,31 @@ export default function Library() {
 
                                               const ext = selectedFile.name.split('.').pop() || 'mp3';
                                               const newName = preview.endsWith(`.${ext}`) ? preview : `${preview}.${ext}`;
-                                              const result = await (selectedFile.handle as any).moveAndRename(newName);
-                                              if (result) {
-                                                setSaveMessage(`Renamed to ${newName}`);
-                                                setTimeout(() => setSaveMessage(null), 3000);
-                                                const updated = { ...selectedFile, name: newName };
-                                                setSelectedFile(updated);
-                                                setFiles(files.map(file => file.path === selectedFile.path ? { ...file, name: newName } : file));
+                                              const moveHandle = selectedFile.handle as FileSystemFileHandle & {
+                                                move?: (newName: string) => Promise<void> | void;
+                                              };
+
+                                              if (typeof moveHandle.move !== 'function') {
+                                                throw new Error('This browser does not support file renaming via the File System Access API.');
                                               }
+
+                                              await moveHandle.move(newName);
+
+                                              const renamedPath = getRenamedPathForFile(selectedFile.path, newName);
+                                              const updatedFile = { ...selectedFile, name: newName, path: renamedPath };
+                                              setSelectedFile(updatedFile);
+                                              setFiles(files.map(file => (
+                                                file.path === selectedFile.path
+                                                  ? { ...file, name: newName, path: renamedPath }
+                                                  : file
+                                              )));
+
+                                              setSaveMessage(`Renamed to ${newName}`);
+                                              setTimeout(() => setSaveMessage(null), 3000);
                                             } catch (e) {
                                               console.error('Rename error', e);
-                                              setSaveMessage('Rename failed.');
+                                              const errorMessage = e instanceof Error ? e.message : String(e);
+                                              setSaveMessage(`Rename failed: ${errorMessage}`);
                                               setTimeout(() => setSaveMessage(null), 3000);
                                             } finally {
                                               setIsSaving(false);
@@ -1498,6 +1582,13 @@ export default function Library() {
           </div>
         </div>
       )}
+
+      <MetadataSearchModal
+        isOpen={isMetadataModalOpen}
+        onClose={() => setIsMetadataModalOpen(false)}
+        initialQuery={metadata?.title || selectedFile?.name?.replace(/\.[^/.]+$/, "") || ""}
+        onApply={handleApplyMetadata}
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "../../store";
 import { Play, Pause, SkipForward, SkipBack, Volume2, VolumeX } from "lucide-react";
+import { getFileFromEntry } from "../../services/fsAccess";
 
 export function AudioPlayer() {
   const { selectedFile, files, setSelectedFile } = useAppStore();
@@ -24,7 +25,7 @@ export function AudioPlayer() {
       }
 
       try {
-        const file = await selectedFile.handle.getFile();
+        const file = await getFileFromEntry(selectedFile);
         url = URL.createObjectURL(file);
         setAudioUrl(url);
       } catch (err) {
