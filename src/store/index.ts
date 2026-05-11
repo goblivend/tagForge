@@ -50,7 +50,7 @@ interface AppState {
   activePresetId: string;
 
   setFolderHandle: (handle: FileSystemDirectoryHandle | null) => void;
-  setFiles: (files: FileEntry[]) => void;
+  setFiles: (files: FileEntry[], options?: { preserveMetadata?: boolean; preserveEditedState?: boolean }) => void;
   setSelectedFile: (file: FileEntry | null) => void;
     setScanning: (isScanning: boolean) => void;
   addRecentMetadata: (tags: { artist?: string; album?: string; genre?: string }) => void;
@@ -89,7 +89,10 @@ export const useAppStore = create<AppState>()(
       activePresetId: 'music',
 
       setFolderHandle: (handle) => set({ folderHandle: handle }),
-      setFiles: (files) => set((state) => {
+      setFiles: (files, options) => set((state) => {
+        const preserveMetadata = options?.preserveMetadata !== false;
+        const preserveEditedState = options?.preserveEditedState !== false;
+
         // Retain isEdited status and cached metadata when files are re-scanned locally
         const oldFilesMap = new Map(state.files.map(f => [f.path, f]));
         const newFiles = files.map(f => {
@@ -98,8 +101,8 @@ export const useAppStore = create<AppState>()(
           const nextMetadata = sanitizeMetadata(f.metadata);
           return {
             ...f,
-            isEdited: old?.isEdited || f.isEdited,
-            metadata: oldMetadata || nextMetadata
+            isEdited: preserveEditedState ? (old?.isEdited || f.isEdited) : f.isEdited,
+            metadata: preserveMetadata ? (oldMetadata || nextMetadata) : nextMetadata
           };
         });
         return { files: newFiles };

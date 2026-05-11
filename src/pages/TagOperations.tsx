@@ -3,13 +3,14 @@ import { Tags, Loader2, RefreshCw, AlertTriangle } from "lucide-react";
 import { useAppStore, type FileEntry } from "../store";
 import { checkPermission, getFileFromEntry } from "../services/fsAccess";
 import { readMetadata, writeMetadata, type AudioTags } from "../services/metadata";
+import { computeAlbumArtistsByAlbum } from "../lib/albumArtists";
 import {
     findPresetByGeneratedName,
     getPreviewNameForPreset,
     getRenamedPathForFile,
 } from "../lib/filenamePresets";
 
-type TagField = "artist" | "album" | "genre" | "date" | "title";
+type TagField = "artist" | "album" | "albumArtist" | "genre" | "date" | "title";
 
 type OperationFailure = {
     path: string;
@@ -29,9 +30,18 @@ type OperationResult = {
     failures: OperationFailure[];
 };
 
+type ClearAlbumArtistResult = {
+    total: number;
+    updated: number;
+    skippedReadOnly: number;
+    skippedPermission: number;
+    failures: OperationFailure[];
+};
+
 const TAG_FIELD_LABELS: Record<TagField, string> = {
     artist: "Artist",
     album: "Album",
+    albumArtist: "Album Artists",
     genre: "Genre",
     date: "Year / Date",
     title: "Title",
@@ -82,8 +92,12 @@ export default function TagOperations() {
     const [newValue, setNewValue] = useState("");
     const [isRunning, setIsRunning] = useState(false);
     const [isIndexing, setIsIndexing] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const [indexProgress, setIndexProgress] = useState({ processed: 0, total: 0 });
+    const [refreshProgress, setRefreshProgress] = useState({ processed: 0, total: 0 });
     const [runProgress, setRunProgress] = useState({ processed: 0, total: 0 });
+    const [clearResult, setClearResult] = useState<ClearAlbumArtistResult | null>(null);
+    const [clearProgress, setClearProgress] = useState({ processed: 0, total: 0 });
     const [result, setResult] = useState<OperationResult | null>(null);
 
     const readOnlyCount = useMemo(() => files.filter((entry) => !entry.handle).length, [files]);
@@ -174,6 +188,201 @@ export default function TagOperations() {
         // Only rerun indexing when library size changes.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [files.length]);
+
+    const clearSelectedField = async () => {
+        if (isRefreshing || isIndexing || isRunning || files.length === 0) return;
+
+        const label = TAG_FIELD_LABELS[activeField] || activeField;
+        const accepted = window.confirm(
+            `Clear ${label} from all ${files.length} loaded file(s)? This will remove the field from writable files and clear it in memory for every file.`
+        );
+        if (!accepted) return;
+
+        const currentFiles = useAppStore.getState().files;
+        const targets = currentFiles.filter((entry) => normalizeTagValue((entry.metadata as any)?.[activeField] as string | undefined));
+
+        setClearResult(null);
+        setClearProgress({ processed: 0, total: targets.length });
+
+        const nextResult: ClearAlbumArtistResult = {
+            total: targets.length,
+            updated: 0,
+            skippedReadOnly: 0,
+            skippedPermission: 0,
+            failures: [],
+        };
+
+        setIsRefreshing(true);
+        try {
+            for (const entry of targets) {
+                try {
+                    // Build a full AudioTags shape for writing
+                    const fullTags: AudioTags = {
+                        title: entry.metadata?.title || '',
+                        artist: entry.metadata?.artist || '',
+                        album: entry.metadata?.album || '',
+                        albumArtist: entry.metadata?.albumArtist || '',
+                        contributingArtists: entry.metadata?.contributingArtists || '',
+                        date: entry.metadata?.date || '',
+                        genre: entry.metadata?.genre || '',
+                        picture: entry.metadata?.picture,
+                    };
+
+                    // set the field to empty
+                    (fullTags as any)[activeField] = '';
+
+                    if (entry.handle) {
+                        const hasPermission = await checkPermission(entry.handle, true);
+                        if (!hasPermission) {
+                            nextResult.skippedPermission += 1;
+                        } else {
+                            const domFile = await getFileFromEntry(entry);
+                            const saveResult = await writeMetadata(domFile, entry.handle, fullTags);
+                            if (!saveResult.success) {
+                                nextResult.failures.push({ path: entry.path, reason: saveResult.error });
+                            } else {
+                                nextResult.updated += 1;
+                            }
+                        }
+                    } else {
+                        nextResult.skippedReadOnly += 1;
+                    }
+
+                    updateFileMetadata(entry.path, { ...(entry.metadata || {}), [activeField]: '' });
+                    if (selectedFile?.path === entry.path) {
+                        setSelectedFile({ ...entry, metadata: { ...(entry.metadata || {}), [activeField]: '' } });
+                    }
+                } catch (error) {
+                    const reason = error instanceof Error ? error.message : String(error);
+                    nextResult.failures.push({ path: entry.path, reason });
+                }
+
+                setClearProgress((current) => ({ processed: current.processed + 1, total: targets.length }));
+            }
+
+            setClearResult(nextResult);
+        } finally {
+            setIsRefreshing(false);
+        }
+    };
+
+    const refreshAllMetadata = async () => {
+        if (isRefreshing || isIndexing || isRunning || files.length === 0) return;
+
+        const currentFiles = useAppStore.getState().files;
+        const strippedFiles = currentFiles.map(({ metadata: _metadata, ...rest }) => ({ ...rest }));
+
+        setIsRefreshing(true);
+        setRefreshProgress({ processed: 0, total: strippedFiles.length });
+
+        try {
+            setFiles(strippedFiles, { preserveMetadata: false, preserveEditedState: true });
+            let processed = 0;
+            for (const entry of strippedFiles) {
+                try {
+                    const domFile = await getFileFromEntry(entry);
+                    const tags = await readMetadata(domFile);
+                    updateFileMetadata(entry.path, tags);
+                    addRecentMetadata(mapRecentMetadata(tags));
+
+                    if (selectedFile?.path === entry.path) {
+                        setSelectedFile({ ...entry, metadata: tags });
+                    }
+                } catch (error) {
+                    console.error("Failed to refresh metadata", entry.path, error);
+                }
+
+                processed += 1;
+                setRefreshProgress({ processed, total: strippedFiles.length });
+            }
+        } finally {
+            setIsRefreshing(false);
+        }
+    };
+
+    const resetAllAlbumArtists = async () => {
+        if (isRefreshing || isIndexing || isRunning || files.length === 0) return;
+
+        const accepted = window.confirm(
+            `Reset Album Artist from all ${files.length} loaded file(s)? This will recompute the field from the album tracks and write the new value to writable files.`
+        );
+        if (!accepted) return;
+
+        const currentFiles = useAppStore.getState().files;
+        const albumArtistsByAlbum = computeAlbumArtistsByAlbum(currentFiles);
+        const targets = currentFiles.filter((entry) => {
+            const album = normalizeTagValue(entry.metadata?.album as string | undefined);
+            const nextAlbumArtist = album ? albumArtistsByAlbum.get(album) || "" : "";
+            return !!album && normalizeTagValue(entry.metadata?.albumArtist as string | undefined) !== nextAlbumArtist && !!nextAlbumArtist;
+        });
+
+        setClearResult(null);
+        setClearProgress({ processed: 0, total: targets.length });
+
+        const nextResult: ClearAlbumArtistResult = {
+            total: targets.length,
+            updated: 0,
+            skippedReadOnly: 0,
+            skippedPermission: 0,
+            failures: [],
+        };
+
+        setIsRefreshing(true);
+        try {
+            for (const entry of targets) {
+                try {
+                    const album = normalizeTagValue(entry.metadata?.album as string | undefined);
+                    const nextAlbumArtist = album ? albumArtistsByAlbum.get(album) || "" : "";
+                    if (!nextAlbumArtist) {
+                        continue;
+                    }
+
+                    const updatedTags: AudioTags = {
+                        ...(entry.metadata as AudioTags),
+                        title: entry.metadata?.title || '',
+                        artist: entry.metadata?.artist || '',
+                        album: entry.metadata?.album || '',
+                        albumArtist: nextAlbumArtist,
+                        contributingArtists: entry.metadata?.contributingArtists || '',
+                        date: entry.metadata?.date || '',
+                        genre: entry.metadata?.genre || '',
+                        picture: entry.metadata?.picture,
+                    };
+
+                    if (entry.handle) {
+                        const hasPermission = await checkPermission(entry.handle, true);
+                        if (!hasPermission) {
+                            nextResult.skippedPermission += 1;
+                        } else {
+                            const domFile = await getFileFromEntry(entry);
+                            const saveResult = await writeMetadata(domFile, entry.handle, updatedTags);
+                            if (!saveResult.success) {
+                                nextResult.failures.push({ path: entry.path, reason: saveResult.error });
+                            } else {
+                                nextResult.updated += 1;
+                            }
+                        }
+                    } else {
+                        nextResult.skippedReadOnly += 1;
+                    }
+
+                    updateFileMetadata(entry.path, { ...entry.metadata, albumArtist: nextAlbumArtist });
+                    if (selectedFile?.path === entry.path) {
+                        setSelectedFile({ ...entry, metadata: { ...entry.metadata, albumArtist: nextAlbumArtist } });
+                    }
+                } catch (error) {
+                    const reason = error instanceof Error ? error.message : String(error);
+                    nextResult.failures.push({ path: entry.path, reason });
+                }
+
+                setClearProgress((current) => ({ processed: current.processed + 1, total: targets.length }));
+            }
+
+            setClearResult(nextResult);
+        } finally {
+            setIsRefreshing(false);
+        }
+    };
 
     const runOperation = async () => {
         const sourceValue = normalizeTagValue(oldValue);
@@ -382,17 +591,38 @@ export default function TagOperations() {
                     <button
                         type="button"
                         onClick={() => void indexAllMetadata()}
-                        disabled={isIndexing || isRunning || files.length === 0}
+                        disabled={isIndexing || isRunning || isRefreshing || files.length === 0}
                         className="inline-flex items-center gap-2 rounded-xl border border-border/70 bg-background/80 px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent/80 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                         <RefreshCw className={`h-4 w-4 ${isIndexing ? "animate-spin" : ""}`} />
                         Index Tag Values
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => void refreshAllMetadata()}
+                        disabled={isIndexing || isRunning || isRefreshing || files.length === 0}
+                        className="inline-flex items-center gap-2 rounded-xl border border-border/70 bg-background/80 px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent/80 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+                        Refresh From Disk
                     </button>
                 </div>
 
                 {(isIndexing || indexProgress.total > 0) && (
                     <p className="mt-3 text-xs text-muted-foreground">
                         Metadata indexing: {indexProgress.processed}/{indexProgress.total}
+                    </p>
+                )}
+
+                {(isRefreshing || refreshProgress.total > 0) && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                        Metadata refresh: {refreshProgress.processed}/{refreshProgress.total}
+                    </p>
+                )}
+
+                {clearResult && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                        Album Artist clear: {clearProgress.processed}/{clearProgress.total} updated {clearResult.updated}, skipped read-only {clearResult.skippedReadOnly}, skipped permission {clearResult.skippedPermission}
                     </p>
                 )}
             </header>
@@ -453,6 +683,28 @@ export default function TagOperations() {
                             placeholder="Enter replacement value"
                         />
                     </label>
+
+                    <div className="mt-3 flex gap-2">
+                        <button
+                            type="button"
+                            onClick={() => void clearSelectedField()}
+                            disabled={isRunning || isIndexing || isRefreshing || files.length === 0}
+                            className="inline-flex items-center gap-2 rounded-xl border border-border/70 bg-red-600/10 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-600/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            Clear {TAG_FIELD_LABELS[activeField]}
+                        </button>
+
+                        {activeField === 'albumArtist' && (
+                            <button
+                                type="button"
+                                onClick={() => void resetAllAlbumArtists()}
+                                disabled={isRunning || isIndexing || isRefreshing || files.length === 0}
+                                className="inline-flex items-center gap-2 rounded-xl border border-border/70 bg-background/80 px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent/80 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                Reset All Album Artists
+                            </button>
+                        )}
+                    </div>
 
                     <div className="mt-4 rounded-xl border border-border/70 bg-background/60 p-3 text-sm">
                         <p className="text-muted-foreground">Files to update: <span className="font-semibold text-foreground">{candidateFiles.length}</span></p>
@@ -535,6 +787,36 @@ export default function TagOperations() {
                             </p>
                             <div className="max-h-48 space-y-1 overflow-y-auto text-xs text-red-700 dark:text-red-300">
                                 {result.failures.map((failure, index) => (
+                                    <p key={`${failure.path}-${index}`}>
+                                        {failure.path}: {failure.reason}
+                                    </p>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {clearResult && (
+                <div className="app-shell rounded-2xl border border-border/80 bg-card/85 p-5 shadow-[var(--panel-shadow)]">
+                    <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Album Artist Clear</h2>
+
+                    <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                        <p>Total candidates: <span className="font-semibold">{clearResult.total}</span></p>
+                        <p>Files updated: <span className="font-semibold">{clearResult.updated}</span></p>
+                        <p>Skipped read-only: <span className="font-semibold">{clearResult.skippedReadOnly}</span></p>
+                        <p>Skipped permissions: <span className="font-semibold">{clearResult.skippedPermission}</span></p>
+                        <p>Failures: <span className="font-semibold">{clearResult.failures.length}</span></p>
+                    </div>
+
+                    {clearResult.failures.length > 0 && (
+                        <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3">
+                            <p className="mb-2 inline-flex items-center gap-2 text-sm font-semibold text-red-700 dark:text-red-300">
+                                <AlertTriangle className="h-4 w-4" />
+                                Failures ({clearResult.failures.length})
+                            </p>
+                            <div className="max-h-48 space-y-1 overflow-y-auto text-xs text-red-700 dark:text-red-300">
+                                {clearResult.failures.map((failure, index) => (
                                     <p key={`${failure.path}-${index}`}>
                                         {failure.path}: {failure.reason}
                                     </p>

@@ -4,8 +4,9 @@ import { openDirectory, scanDirectoryForAudio, scanFilesForAudio, checkPermissio
 import { readMetadata, writeMetadata, AudioTags } from "../services/metadata";
 import { MetadataSearchModal } from "../components/library/MetadataSearchModal";
 import { getPreviewNameForPreset, getRenamedPathForFile } from "../lib/filenamePresets";
+import { computeAlbumArtistForAlbum } from "../lib/albumArtists";
 
-import { Settings2, CheckCircle2, Image as ImageIcon, UploadCloud, Link as LinkIcon, Clipboard, Keyboard, Search, X } from "lucide-react";
+import { Settings2, CheckCircle2, Image as ImageIcon, UploadCloud, Link as LinkIcon, Clipboard, Keyboard, Search, X, RefreshCw, ChevronLeft } from "lucide-react";
 
 const DEBUG_COVERS = import.meta.env.DEV;
 
@@ -180,9 +181,11 @@ export default function Library() {
   const [isMetadataModalOpen, setIsMetadataModalOpen] = useState(false);
   const [isReadOnlyImport, setIsReadOnlyImport] = useState(false);
   const [folderLabel, setFolderLabel] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const [leftWidth, setLeftWidth] = useState(400); // Draggable resizer width
   const [isDragging, setIsDragging] = useState(false);
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [showCropModal, setShowCropModal] = useState(false);
   const cropContainerRef = React.useRef<HTMLDivElement | null>(null);
   const cropImageRef = React.useRef<HTMLImageElement | null>(null);
@@ -244,6 +247,8 @@ export default function Library() {
             title: tags.title || undefined,
             artist: tags.artist || undefined,
             album: tags.album || undefined,
+            albumArtist: tags.albumArtist || undefined,
+            contributingArtists: tags.contributingArtists || undefined,
             date: tags.date || undefined,
             genre: tags.genre || undefined,
           };
@@ -419,13 +424,93 @@ export default function Library() {
         ? selection.handle.name
         : (foundFiles[0]?.path.split('/')[0] || 'Imported Folder'));
       setFolderHandle(selection.mode === 'directory' ? selection.handle : null);
-      setFiles(foundFiles);
+      setFiles(foundFiles, { preserveMetadata: false, preserveEditedState: true });
+      if (foundFiles.length > 0) {
+        await handleSelectFile(foundFiles[0]);
+      }
     } catch (e) {
       console.error(e);
     } finally {
       setScanning(false);
     }
   };
+
+  const refreshFromDisk = async () => {
+    if (isRefreshing || isScanning || files.length === 0) return;
+
+    setIsRefreshing(true);
+    setScanning(true);
+
+    const selectedPath = selectedFile?.path ?? null;
+
+    try {
+      const sourceFiles = folderHandle
+        ? await scanDirectoryForAudio(folderHandle)
+        : scanFilesForAudio(files.map((entry) => entry.file).filter(Boolean) as File[]);
+
+      const strippedFiles = sourceFiles.map(({ metadata: _metadata, ...rest }) => ({ ...rest }));
+      setFiles(strippedFiles, { preserveMetadata: false, preserveEditedState: true });
+
+      let processed = 0;
+      for (const entry of strippedFiles) {
+        try {
+          if (entry.handle) {
+            const hasPerm = await checkPermission(entry.handle, true);
+            if (!hasPerm) continue;
+          }
+
+          const domFile = await getFileFromEntry(entry);
+          const tags = await readMetadata(domFile);
+          updateFileMetadata(entry.path, tags);
+          addRecentMetadata(tags);
+
+          if (selectedPath && entry.path === selectedPath) {
+            setSelectedFile({ ...entry, metadata: tags });
+            setMetadata(tags);
+          }
+        } catch (error) {
+          console.error('Failed to refresh metadata', entry.path, error);
+        }
+
+        processed += 1;
+      }
+
+      if (selectedPath) {
+        const refreshedSelected = useAppStore.getState().files.find((entry) => entry.path === selectedPath) || null;
+        if (refreshedSelected) {
+          setSelectedFile(refreshedSelected);
+          if (refreshedSelected.metadata) {
+            setMetadata(refreshedSelected.metadata as AudioTags);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to refresh library from disk', error);
+    } finally {
+      setScanning(false);
+      setIsRefreshing(false);
+    }
+  };
+
+  const albumArtistRefreshInfo = useMemo(() => {
+    const album = metadata?.album?.trim();
+    if (!selectedFile || !album) return null;
+
+    const currentFiles = useAppStore.getState().files.map((entry) => (
+      entry.path === selectedFile.path ? { ...entry, metadata: metadata || undefined } : entry
+    ));
+    const albumFiles = currentFiles.filter((entry) => entry.metadata?.album?.trim() === album);
+    const nextAlbumArtist = computeAlbumArtistForAlbum(currentFiles, album);
+    const changedFiles = albumFiles.filter((entry) => (entry.metadata?.albumArtist || "").trim() !== nextAlbumArtist);
+
+    return {
+      album,
+      nextAlbumArtist,
+      totalTracks: albumFiles.length,
+      changedTracks: changedFiles.length,
+      changedNames: changedFiles.slice(0, 4).map((entry) => entry.name),
+    };
+  }, [metadata, selectedFile?.path, selectedFile, files]);
 
   const handleSelectFile = async (file: FileEntry) => {
     setSelectedFile(file);
@@ -445,6 +530,17 @@ export default function Library() {
 
       const domFile = await getFileFromEntry(file);
       const tags = await readMetadata(domFile);
+      const albumArtist = computeAlbumArtistForAlbum(
+        useAppStore.getState().files.map((entry) => (
+          entry.path === file.path ? { ...entry, metadata: tags } : entry
+        )),
+        tags.album
+      );
+
+      if (!tags.albumArtist && albumArtist) {
+        tags.albumArtist = albumArtist;
+      }
+
       setMetadata(tags);
       addRecentMetadata(tags);
       updateFileMetadata(file.path, tags);
@@ -460,6 +556,39 @@ export default function Library() {
     if (metadata) {
       setMetadata({ ...metadata, [field]: value });
     }
+  };
+
+  const refreshAlbumArtist = () => {
+    if (!selectedFile || !metadata) return;
+
+    const currentFile = { ...selectedFile, metadata };
+    const currentFiles = useAppStore.getState().files.map((entry) => (
+      entry.path === selectedFile.path ? currentFile : entry
+    ));
+    const nextAlbumArtist = computeAlbumArtistForAlbum(currentFiles, metadata.album || "");
+    const albumFiles = currentFiles.filter((entry) => entry.metadata?.album?.trim() === metadata.album?.trim());
+    const changedFiles = albumFiles.filter((entry) => (entry.metadata?.albumArtist || "").trim() !== nextAlbumArtist);
+
+    if (changedFiles.length > 1) {
+      const previewList = changedFiles.slice(0, 6).map((entry) => `• ${entry.name}`).join("\n");
+      const accepted = window.confirm(
+        `Refresh Album Artist for ${changedFiles.length} tracks in "${metadata.album}"?\n\nThe following files will be updated:\n${previewList}${changedFiles.length > 6 ? "\n• ..." : ""}`
+      );
+      if (!accepted) return;
+    }
+
+    for (const entry of changedFiles) {
+      updateFileMetadata(entry.path, { albumArtist: nextAlbumArtist });
+    }
+
+    handleChange('albumArtist', nextAlbumArtist);
+    updateFileMetadata(selectedFile.path, { albumArtist: nextAlbumArtist });
+    setSaveMessage(
+      changedFiles.length > 1
+        ? `Album Artist refreshed for ${changedFiles.length} tracks in this album`
+        : (nextAlbumArtist ? 'Album Artist refreshed from album tracks' : 'Album Artist cleared (no contributors found)')
+    );
+    setTimeout(() => setSaveMessage(null), 2500);
   };
 
   const handleAutoCropCenter11 = async (e?: React.MouseEvent) => {
@@ -517,6 +646,7 @@ export default function Library() {
       title: newTags.title !== undefined ? newTags.title : metadata.title,
       artist: newTags.artist !== undefined ? newTags.artist : metadata.artist,
       album: newTags.album !== undefined ? newTags.album : metadata.album,
+      albumArtist: newTags.albumArtist !== undefined ? newTags.albumArtist : metadata.albumArtist,
       date: newTags.date !== undefined ? newTags.date : metadata.date,
       genre: newTags.genre !== undefined ? newTags.genre : metadata.genre,
       picture: newTags.picture !== undefined ? newTags.picture : metadata.picture
@@ -527,6 +657,7 @@ export default function Library() {
         title: newTags.title,
         artist: newTags.artist,
         album: newTags.album,
+        albumArtist: newTags.albumArtist,
         genre: newTags.genre,
         ...(newTags.picture !== undefined ? { picture: newTags.picture } : {})
       });
@@ -852,9 +983,19 @@ export default function Library() {
   return (
     <div className="relative flex h-full flex-col space-y-6" onMouseMove={(e) => { if (isDragging) setLeftWidth(e.clientX - 20) }} onMouseUp={() => setIsDragging(false)} onMouseLeave={() => setIsDragging(false)}>
       <div className="flex shrink-0 flex-col justify-between gap-3 sm:flex-row sm:items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Library</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Open a music folder, inspect tracks, and apply metadata changes without leaving the browser.</p>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setLeftCollapsed(prev => !prev)}
+            className="rounded-full p-2 hover:bg-muted/30 transition-transform"
+            title={leftCollapsed ? 'Expand file explorer' : 'Collapse file explorer'}
+          >
+            <ChevronLeft className={`h-5 w-5 transition-transform ${leftCollapsed ? 'rotate-180' : ''}`} />
+          </button>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Library</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Open a music folder, inspect tracks, and apply metadata changes without leaving the browser.</p>
+          </div>
         </div>
         <div className="relative flex flex-wrap items-center gap-2">
           <button
@@ -896,6 +1037,18 @@ export default function Library() {
               className="rounded-xl bg-[linear-gradient(135deg,hsl(var(--primary-color)),hsl(var(--primary-dark)))] px-4 py-2 text-sm font-semibold text-primary-foreground shadow-[var(--panel-shadow)] transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-[var(--panel-shadow-lg)]"
             >
               Change Folder
+            </button>
+          )}
+
+          {(folderHandle || files.length > 0) && (
+            <button
+              type="button"
+              onClick={() => void refreshFromDisk()}
+              disabled={isRefreshing || isScanning}
+              className="inline-flex items-center gap-2 rounded-xl border border-border/70 bg-card/85 px-3 py-2 text-sm font-medium text-muted-foreground shadow-[var(--panel-shadow)] transition-[transform,background-color,color] hover:-translate-y-0.5 hover:bg-accent/80 hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              Refresh
             </button>
           )}
         </div>
@@ -947,10 +1100,10 @@ export default function Library() {
                 {/* Left Panel: CSV-like Table */}
                 <div
                   className={`order-2 h-full w-full shrink-0 flex-col overflow-hidden border-b border-border/70 bg-background/80 lg:order-1 lg:border-b-0 lg:border-r lg:w-[var(--library-pane-width)] ${mobileView === 'details' ? 'hidden lg:flex' : 'flex'}`}
-                  style={{ ['--library-pane-width' as any]: `${Math.max(250, leftWidth)}px` } as React.CSSProperties}
+                  style={{ ['--library-pane-width' as any]: `${leftCollapsed ? 56 : Math.max(250, leftWidth)}px` } as React.CSSProperties}
                 >
                   <div className="flex h-full flex-col">
-                    <div className="flex shrink-0 items-center justify-between border-b border-border/70 bg-muted/35 p-3 text-xs font-semibold uppercase text-muted-foreground select-none">
+                    <div className={`${leftCollapsed ? 'hidden' : 'flex'} shrink-0 items-center justify-between border-b border-border/70 bg-muted/35 p-3 text-xs font-semibold uppercase text-muted-foreground select-none`}>
                       <div className="flex-1 min-w-[200px] flex items-center gap-2 cursor-pointer hover:text-foreground" onClick={() => handleSort('filename')}>
                         <span title={folderHandle?.name || folderLabel || 'Imported Folder'}>
                           {folderHandle?.name || folderLabel || 'Imported Folder'} ({files.length}) {getSortIcon('filename')}
@@ -970,83 +1123,98 @@ export default function Library() {
                         <div className="p-4 text-center text-sm text-muted-foreground">No audio files found.</div>
                       ) : (
                         <>
-                          <div className="space-y-2 lg:hidden">
-                            {sortedFiles.map((file) => (
+                          {leftCollapsed ? (
+                            <div className="flex h-full items-start justify-center pt-3">
                               <button
-                                key={file.path}
                                 type="button"
-                                onClick={() => handleSelectFile(file)}
-                                className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-[transform,background-color,color,box-shadow] ${selectedFile?.path === file.path
-                                  ? 'border-primary/30 bg-[linear-gradient(135deg,hsl(var(--primary-color)/0.18),hsl(var(--accent-color)/0.12))] text-foreground shadow-[var(--panel-shadow)]'
-                                  : file.isEdited
-                                    ? 'border-border/70 bg-background/90 text-foreground hover:bg-accent/80'
-                                    : 'border-border/70 bg-background/90 text-muted-foreground hover:bg-accent/80 hover:text-foreground'
-                                  }`}
+                                onClick={() => setLeftCollapsed(false)}
+                                className="rounded-full p-2 hover:bg-muted/30"
+                                title="Expand file explorer"
                               >
-                                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-muted/30">
-                                  <CoverThumb
-                                    picture={file.metadata?.picture}
-                                    alt={file.name + ' cover'}
-                                    className="h-full w-full object-contain"
-                                    onLoadError={() => removeInvalidPicture(file.path, 'library-mobile-list')}
-                                  />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-start justify-between gap-2">
-                                    <div className="min-w-0">
-                                      <div className="flex items-center gap-2">
-                                        {file.isEdited ? (
-                                          <CheckCircle2 size={14} className="shrink-0" style={{ color: "hsl(var(--success-color))" }} />
-                                        ) : null}
-                                        <span className="truncate text-sm font-semibold text-foreground">{file.name}</span>
-                                      </div>
-                                      <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{file.metadata?.artist || '-'}{file.metadata?.artist && file.metadata?.album ? ' • ' : ''}{file.metadata?.album || ''}</p>
-                                    </div>
-                                    <span className="shrink-0 rounded-full border border-border/70 bg-background/80 px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">{(file.metadata as any)?.year || file.metadata?.date?.substring(0, 4) || '-'}</span>
-                                  </div>
-                                  <div className="mt-2 flex flex-wrap gap-1 text-[11px] text-muted-foreground">
-                                    {file.metadata?.title ? <span className="soft-pill">{file.metadata.title}</span> : null}
-                                    {file.metadata?.genre ? <span className="soft-pill">{file.metadata.genre}</span> : null}
-                                  </div>
-                                </div>
+                                <ChevronLeft className="h-5 w-5 rotate-180" />
                               </button>
-                            ))}
-                          </div>
-
-                          <div className="hidden space-y-0.5 lg:block">
-                            {sortedFiles.map((file) => (
-                              <div
-                                key={file.path}
-                                onClick={() => handleSelectFile(file)}
-                                className={`group flex cursor-pointer items-center rounded-lg p-1.5 text-xs transition-[transform,background-color,color,box-shadow] ${selectedFile?.path === file.path
-                                  ? 'bg-[linear-gradient(135deg,hsl(var(--primary-color)/0.18),hsl(var(--accent-color)/0.14))] text-foreground font-medium shadow-[var(--panel-shadow)]'
-                                  : file.isEdited
-                                    ? 'text-foreground hover:bg-accent/80'
-                                    : 'text-muted-foreground hover:bg-accent/80 hover:text-foreground'
-                                  }`}
-                              >
-                                <div className="flex-1 min-w-[200px] truncate flex items-center gap-1.5">
-                                  {file.isEdited ? (
-                                    <CheckCircle2 size={14} className="shrink-0" style={{ color: "hsl(var(--success-color))" }} />
-                                  ) : null}
-                                  <div className="w-10 h-10 shrink-0 rounded-md overflow-hidden bg-muted/30 flex items-center justify-center mr-2">
-                                    <CoverThumb
-                                      picture={file.metadata?.picture}
-                                      alt={file.name + ' cover'}
-                                      className="w-full h-full object-contain"
-                                      onLoadError={() => removeInvalidPicture(file.path, 'library-list')}
-                                    />
-                                  </div>
-                                  <span className="truncate">{file.name}</span>
-                                </div>
-                                {!hiddenColumns['title'] && <div className="w-[120px] shrink-0 pl-2 border-l border-border/40 truncate opacity-70 group-hover:opacity-100 transition-opacity">{file.metadata?.title || '-'}</div>}
-                                {!hiddenColumns['artist'] && <div className="w-[120px] shrink-0 pl-2 border-l border-border/40 truncate opacity-70 group-hover:opacity-100 transition-opacity">{file.metadata?.artist || '-'}</div>}
-                                {!hiddenColumns['album'] && <div className="w-[120px] shrink-0 pl-2 border-l border-border/40 truncate opacity-70 group-hover:opacity-100 transition-opacity">{file.metadata?.album || '-'}</div>}
-                                {!hiddenColumns['genre'] && <div className="w-[100px] shrink-0 pl-2 border-l border-border/40 truncate opacity-70 group-hover:opacity-100 transition-opacity">{file.metadata?.genre || '-'}</div>}
-                                {!hiddenColumns['year'] && <div className="w-[60px] shrink-0 pl-2 border-l border-border/40 truncate opacity-70 group-hover:opacity-100 transition-opacity">{(file.metadata as any)?.year || file.metadata?.date?.substring(0, 4) || '-'}</div>}
+                            </div>
+                          ) : (
+                            <>
+                              <div className="space-y-2 lg:hidden">
+                                {sortedFiles.map((file) => (
+                                  <button
+                                    key={file.path}
+                                    type="button"
+                                    onClick={() => handleSelectFile(file)}
+                                    className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-[transform,background-color,color,box-shadow] ${selectedFile?.path === file.path
+                                      ? 'border-primary/30 bg-[linear-gradient(135deg,hsl(var(--primary-color)/0.18),hsl(var(--accent-color)/0.12))] text-foreground shadow-[var(--panel-shadow)]'
+                                      : file.isEdited
+                                        ? 'border-border/70 bg-background/90 text-foreground hover:bg-accent/80'
+                                        : 'border-border/70 bg-background/90 text-muted-foreground hover:bg-accent/80 hover:text-foreground'
+                                      }`}
+                                  >
+                                    <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-muted/30">
+                                      <CoverThumb
+                                        picture={file.metadata?.picture}
+                                        alt={file.name + ' cover'}
+                                        className="h-full w-full object-contain"
+                                        onLoadError={() => removeInvalidPicture(file.path, 'library-mobile-list')}
+                                      />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="min-w-0">
+                                          <div className="flex items-center gap-2">
+                                            {file.isEdited ? (
+                                              <CheckCircle2 size={14} className="shrink-0" style={{ color: "hsl(var(--success-color))" }} />
+                                            ) : null}
+                                            <span className="truncate text-sm font-semibold text-foreground">{file.name}</span>
+                                          </div>
+                                          <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{file.metadata?.artist || '-'}{file.metadata?.artist && file.metadata?.album ? ' • ' : ''}{file.metadata?.album || ''}</p>
+                                        </div>
+                                        <span className="shrink-0 rounded-full border border-border/70 bg-background/80 px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">{(file.metadata as any)?.year || file.metadata?.date?.substring(0, 4) || '-'}</span>
+                                      </div>
+                                      <div className="mt-2 flex flex-wrap gap-1 text-[11px] text-muted-foreground">
+                                        {file.metadata?.title ? <span className="soft-pill">{file.metadata.title}</span> : null}
+                                        {file.metadata?.genre ? <span className="soft-pill">{file.metadata.genre}</span> : null}
+                                      </div>
+                                    </div>
+                                  </button>
+                                ))}
                               </div>
-                            ))}
-                          </div>
+
+                              <div className="hidden space-y-0.5 lg:block">
+                                {sortedFiles.map((file) => (
+                                  <div
+                                    key={file.path}
+                                    onClick={() => handleSelectFile(file)}
+                                    className={`group flex cursor-pointer items-center rounded-lg p-1.5 text-xs transition-[transform,background-color,color,box-shadow] ${selectedFile?.path === file.path
+                                      ? 'bg-[linear-gradient(135deg,hsl(var(--primary-color)/0.18),hsl(var(--accent-color)/0.14))] text-foreground font-medium shadow-[var(--panel-shadow)]'
+                                      : file.isEdited
+                                        ? 'text-foreground hover:bg-accent/80'
+                                        : 'text-muted-foreground hover:bg-accent/80 hover:text-foreground'
+                                      }`}
+                                  >
+                                    <div className="flex-1 min-w-[200px] truncate flex items-center gap-1.5">
+                                      {file.isEdited ? (
+                                        <CheckCircle2 size={14} className="shrink-0" style={{ color: "hsl(var(--success-color))" }} />
+                                      ) : null}
+                                      <div className="w-10 h-10 shrink-0 rounded-md overflow-hidden bg-muted/30 flex items-center justify-center mr-2">
+                                        <CoverThumb
+                                          picture={file.metadata?.picture}
+                                          alt={file.name + ' cover'}
+                                          className="w-full h-full object-contain"
+                                          onLoadError={() => removeInvalidPicture(file.path, 'library-list')}
+                                        />
+                                      </div>
+                                      <span className="truncate">{file.name}</span>
+                                    </div>
+                                    {!hiddenColumns['title'] && <div className="w-[120px] shrink-0 pl-2 border-l border-border/40 truncate opacity-70 group-hover:opacity-100 transition-opacity">{file.metadata?.title || '-'}</div>}
+                                    {!hiddenColumns['artist'] && <div className="w-[120px] shrink-0 pl-2 border-l border-border/40 truncate opacity-70 group-hover:opacity-100 transition-opacity">{file.metadata?.artist || '-'}</div>}
+                                    {!hiddenColumns['album'] && <div className="w-[120px] shrink-0 pl-2 border-l border-border/40 truncate opacity-70 group-hover:opacity-100 transition-opacity">{file.metadata?.album || '-'}</div>}
+                                    {!hiddenColumns['genre'] && <div className="w-[100px] shrink-0 pl-2 border-l border-border/40 truncate opacity-70 group-hover:opacity-100 transition-opacity">{file.metadata?.genre || '-'}</div>}
+                                    {!hiddenColumns['year'] && <div className="w-[60px] shrink-0 pl-2 border-l border-border/40 truncate opacity-70 group-hover:opacity-100 transition-opacity">{(file.metadata as any)?.year || file.metadata?.date?.substring(0, 4) || '-'}</div>}
+                                  </div>
+                                ))}
+                              </div>
+                            </>
+                          )}
                         </>
                       )}
                     </div>
@@ -1054,7 +1222,7 @@ export default function Library() {
                 </div>
 
                 <div
-                  className={`order-2 hidden w-2 shrink-0 cursor-col-resize flex-col items-center justify-center border-x border-border/70 bg-muted/45 transition-colors hover:bg-primary/20 select-none lg:flex ${mobileView === 'details' ? 'lg:flex' : ''}`}
+                  className={`order-2 hidden w-2 shrink-0 cursor-col-resize flex-col items-center justify-center border-x border-border/70 bg-muted/45 transition-colors hover:bg-primary/20 select-none lg:flex ${leftCollapsed ? 'lg:hidden' : ''} ${mobileView === 'details' ? 'lg:flex' : ''}`}
                   onMouseDown={(e) => { e.preventDefault(); setIsDragging(true); }}
                 >
                   <div className="h-10 w-1 rounded-full bg-border" />
@@ -1121,6 +1289,32 @@ export default function Library() {
                                 <datalist id="albums-list">
                                   {recentAlbums.map(a => <option key={a} value={a} />)}
                                 </datalist>
+                              </div>
+
+                              <div className="space-y-1.5 md:col-span-2">
+                                <label className="text-sm font-medium text-foreground">Album Artist</label>
+                                <div className="flex gap-2">
+                                  <input
+                                    type="text"
+                                    value={metadata.albumArtist || ''}
+                                    onChange={(e) => handleChange('albumArtist', e.target.value)}
+                                    className="min-w-0 flex-1 rounded-xl px-3 py-2"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={refreshAlbumArtist}
+                                    className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-border/70 bg-background/80 px-3 py-2 text-sm font-medium text-muted-foreground shadow-[var(--panel-shadow)] transition-colors hover:bg-accent/80 hover:text-accent-foreground"
+                                    title="Refresh Album Artist from tracks in the same album"
+                                  >
+                                    <RefreshCw className="h-4 w-4" />
+                                    Refresh
+                                  </button>
+                                </div>
+                                {albumArtistRefreshInfo && albumArtistRefreshInfo.totalTracks > 1 && (
+                                  <p className="text-xs text-muted-foreground">
+                                    Refreshing will update {albumArtistRefreshInfo.changedTracks} track(s) in this album.
+                                  </p>
+                                )}
                               </div>
                             </div>
 

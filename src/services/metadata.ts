@@ -5,6 +5,8 @@ export interface AudioTags {
   title: string;
   artist: string;
   album: string;
+  albumArtist?: string;
+  contributingArtists?: string;
   date: string;
   genre: string;
   picture?: {
@@ -47,13 +49,15 @@ export async function readMetadata(file: File): Promise<AudioTags> {
       title: mp3tag.tags.v2?.TIT2 || mp3tag.tags.title || '',
       artist: mp3tag.tags.v2?.TPE1 || mp3tag.tags.artist || '',
       album: mp3tag.tags.v2?.TALB || mp3tag.tags.album || '',
+      albumArtist: mp3tag.tags.v2?.TPE2 || (mp3tag.tags as any).albumArtist || '',
+      contributingArtists: mp3tag.tags.v2?.TXXX?.find?.((t: any) => t.description === 'CONTRIBUTING_ARTISTS')?.text || '',
       date: mp3tag.tags.v2?.TDRC || mp3tag.tags.v2?.TYER || mp3tag.tags.year || '',
       genre: mp3tag.tags.v2?.TCON || mp3tag.tags.genre || '',
       picture
     };
   } catch (error) {
     console.error("Error reading metadata", error);
-    return { title: '', artist: '', album: '', date: '', genre: '' };
+    return { title: '', artist: '', album: '', albumArtist: '', contributingArtists: '', date: '', genre: '' };
   }
 }
 
@@ -96,6 +100,20 @@ async function writeMp3Metadata(file: File, fileHandle: FileSystemFileHandle, ta
     mp3tag.tags.v2.TIT2 = tags.title;
     mp3tag.tags.v2.TPE1 = tags.artist;
     mp3tag.tags.v2.TALB = tags.album;
+    // Album artist (TPE2)
+    if (typeof tags.albumArtist === 'string' && tags.albumArtist.trim()) {
+      mp3tag.tags.v2.TPE2 = tags.albumArtist;
+    } else {
+      delete mp3tag.tags.v2.TPE2;
+    }
+    // Contributing artists: store in a TXXX user frame with description 'CONTRIBUTING_ARTISTS'
+    if (typeof tags.contributingArtists === 'string' && tags.contributingArtists.trim()) {
+      mp3tag.tags.v2.TXXX = mp3tag.tags.v2.TXXX || [];
+      // replace existing entry with same description if present
+      mp3tag.tags.v2.TXXX = (mp3tag.tags.v2.TXXX.filter?.((t: any) => t.description !== 'CONTRIBUTING_ARTISTS') || []).concat([{ description: 'CONTRIBUTING_ARTISTS', text: tags.contributingArtists }]);
+    } else if (mp3tag.tags.v2.TXXX) {
+      mp3tag.tags.v2.TXXX = mp3tag.tags.v2.TXXX.filter?.((t: any) => t.description !== 'CONTRIBUTING_ARTISTS') || mp3tag.tags.v2.TXXX;
+    }
 
     // TDRC is usually preferred for full date/time in newer ID3v2.4
     // TYER is the older ID3v2.3 year frame. We'll set both to be safe,
