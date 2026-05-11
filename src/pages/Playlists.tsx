@@ -1,9 +1,70 @@
-import { useState } from "react";
-import { useAppStore } from "../store";
+import { useState, useEffect } from "react";
+import { useAppStore, FileEntry } from "../store";
+import { findPlaylistsInDirectory, getFileFromEntry } from "../services/fsAccess";
+import { Trash2 } from "lucide-react";
 
 export default function Playlists() {
   const { files, folderHandle } = useAppStore();
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [playlists, setPlaylists] = useState<Array<FileEntry & { trackCount: number }>>([]);
+  const [isLoadingPlaylists, setIsLoadingPlaylists] = useState(false);
+
+  // Load playlists from disk when folder changes
+  useEffect(() => {
+    const loadPlaylists = async () => {
+      if (!folderHandle) {
+        setPlaylists([]);
+        return;
+      }
+
+      setIsLoadingPlaylists(true);
+      try {
+        const foundPlaylists = await findPlaylistsInDirectory(folderHandle);
+
+        // Parse each playlist to count tracks
+        const playlistsWithCounts = await Promise.all(
+          foundPlaylists.map(async (playlist) => {
+            try {
+              const playlistFile = await getFileFromEntry(playlist);
+              const content = await playlistFile.text();
+              // Count non-comment lines as tracks
+              const trackCount = content
+                .split('\n')
+                .filter(line => line.trim() && !line.startsWith('#'))
+                .length;
+              return { ...playlist, trackCount };
+            } catch (error) {
+              console.error('Failed to parse playlist', playlist.name, error);
+              return { ...playlist, trackCount: 0 };
+            }
+          })
+        );
+
+        setPlaylists(playlistsWithCounts);
+      } catch (error) {
+        console.error('Failed to load playlists', error);
+      } finally {
+        setIsLoadingPlaylists(false);
+      }
+    };
+
+    loadPlaylists();
+  }, [folderHandle]);
+
+  const handleDeletePlaylist = async (playlist: FileEntry) => {
+    if (!playlist.handle) return;
+
+    if (!confirm(`Delete playlist "${playlist.name}"?`)) return;
+
+    try {
+      // @ts-ignore
+      await playlist.handle.remove?.();
+      setPlaylists(prev => prev.filter(p => p.path !== playlist.path));
+    } catch (error) {
+      console.error('Failed to delete playlist', error);
+      alert('Failed to delete playlist');
+    }
+  };
 
   const handleExportPlaylist = async () => {
     if (!folderHandle || files.length === 0) {
@@ -49,45 +110,77 @@ export default function Playlists() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Playlists</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Export the tracks currently loaded in your library as a portable playlist.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Browse and manage playlists in your music folder.</p>
         </div>
-        <button
-          onClick={handleExportPlaylist}
-          disabled={files.length === 0}
-          className="rounded-xl bg-[linear-gradient(135deg,hsl(var(--primary-color)),hsl(var(--primary-dark)))] px-4 py-2 font-semibold text-primary-foreground shadow-[var(--panel-shadow)] transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-[var(--panel-shadow-lg)] disabled:opacity-50"
-        >
-          Export All as .m3u8
-        </button>
       </div>
-      
+
       {saveMessage && (
         <div className="status-success rounded-xl border border-border px-4 py-3 shadow-[var(--panel-shadow)]">
           {saveMessage}
         </div>
       )}
 
-      {files.length === 0 ? (
-        <div className="panel flex flex-col items-center rounded-xl p-8 text-center">
-          <h3 className="text-lg font-medium text-card-foreground">No audio files loaded</h3>
-          <p className="text-sm text-muted-foreground mt-2">
-            Open a folder in the Library tab first to generate a playlist.
-          </p>
-        </div>
-      ) : (
-        <div className="panel space-y-4 rounded-xl p-5">
-          <h3 className="text-lg font-medium">Generate Playlist from Library</h3>
-          <p className="text-sm text-muted-foreground">
-            You currently have {files.length} audio file(s) loaded. You can export them into a standard .m3u8 playlist file that can be opened in other media players (like VLC, Winamp, etc.).
-          </p>
-          <div className="max-h-60 overflow-y-auto rounded-xl border border-border/80 bg-background/80 p-3 shadow-[var(--panel-shadow)]">
-            <pre className="text-xs text-muted-foreground whitespace-pre-wrap">
-              #EXTM3U{"\n"}
-              {files.slice(0, 5).map(f => `#EXTINF:-1,${f.name.replace('.mp3', '')}\n${f.path}\n`).join('')}
-              {files.length > 5 ? `... and ${files.length - 5} more items` : ''}
-            </pre>
+      {/* Existing Playlists Section */}
+      <div className="panel rounded-xl p-6">
+        <h2 className="text-xl font-semibold mb-4">Existing Playlists</h2>
+        {!folderHandle ? (
+          <p className="text-sm text-muted-foreground">Open a folder in the Library tab to see playlists.</p>
+        ) : isLoadingPlaylists ? (
+          <p className="text-sm text-muted-foreground">Loading playlists...</p>
+        ) : playlists.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No playlists found in this folder.</p>
+        ) : (
+          <div className="space-y-2">
+            {playlists.map(playlist => (
+              <div
+                key={playlist.path}
+                className="flex items-center justify-between rounded-lg border border-border/60 bg-background/50 px-4 py-3"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{playlist.name}</p>
+                  <p className="text-xs text-muted-foreground">{playlist.trackCount} track{playlist.trackCount !== 1 ? 's' : ''}</p>
+                </div>
+                <button
+                  onClick={() => handleDeletePlaylist(playlist)}
+                  className="ml-4 shrink-0 rounded-lg border border-border/70 bg-red-500/10 p-2 text-red-600 transition-colors hover:bg-red-500/20 dark:text-red-400"
+                  title="Delete playlist"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
+
+      {/* Export Playlist Section */}
+      <div className="panel rounded-xl p-6">
+        <h2 className="text-xl font-semibold mb-4">Export Playlist from Library</h2>
+        {files.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Open a folder in the Library tab first to export the loaded tracks as a playlist.
+          </p>
+        ) : (
+          <>
+            <p className="text-sm text-muted-foreground mb-4">
+              You currently have {files.length} audio file(s) loaded. Export them into a standard .m3u8 playlist file that can be opened in other media players.
+            </p>
+            <div className="max-h-60 overflow-y-auto rounded-xl border border-border/80 bg-background/80 p-3 shadow-[var(--panel-shadow)] mb-4">
+              <pre className="text-xs text-muted-foreground whitespace-pre-wrap">
+                #EXTM3U{"\n"}
+                {files.slice(0, 5).map(f => `#EXTINF:-1,${f.name.replace(/\.(mp3|m4a|m4b|m4p|flac|wav|ogg|opus|aac)$/i, '')}\n${f.path}\n`).join('')}
+                {files.length > 5 ? `... and ${files.length - 5} more items` : ''}
+              </pre>
+            </div>
+            <button
+              onClick={handleExportPlaylist}
+              className="rounded-xl bg-[linear-gradient(135deg,hsl(var(--primary-color)),hsl(var(--primary-dark)))] px-4 py-2 font-semibold text-primary-foreground shadow-[var(--panel-shadow)] transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-[var(--panel-shadow-lg)]"
+            >
+              Export All as .m3u8
+            </button>
+          </>
+        )}
+      </div>
     </div>
   );
 }

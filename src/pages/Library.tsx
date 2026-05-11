@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useAppStore, FileEntry } from "../store";
-import { openDirectory, scanDirectoryForAudio, scanFilesForAudio, checkPermission, getFileFromEntry } from "../services/fsAccess";
-import { readMetadata, writeMetadata, AudioTags } from "../services/metadata";
+import { openDirectory, scanDirectoryForAudio, scanFilesForAudio, checkPermission, getFileFromEntry, isAudioFile } from "../services/fsAccess";
+import { canWriteMetadataForFileName, isPlaylistFile, readMetadata, writeMetadata, AudioTags } from "../services/metadata";
 import { MetadataSearchModal } from "../components/library/MetadataSearchModal";
 import { getPreviewNameForPreset, getRenamedPathForFile } from "../lib/filenamePresets";
 import { computeAlbumArtistForAlbum } from "../lib/albumArtists";
-
+import { hashImageData } from "../lib/imageHash";
 import { Settings2, CheckCircle2, Image as ImageIcon, UploadCloud, Link as LinkIcon, Clipboard, Keyboard, Search, X, RefreshCw, ChevronLeft } from "lucide-react";
 
 const DEBUG_COVERS = import.meta.env.DEV;
@@ -18,6 +18,38 @@ function debugCover(...args: unknown[]) {
 
 function hasValidPicture(picture?: { format: string; data: ArrayBuffer } | null): picture is { format: string; data: ArrayBuffer } {
   return !!picture?.data && picture.data.byteLength > 0;
+}
+
+type DedupedCover = {
+  hash: string;
+  representativeFile: FileEntry;
+  sourceFiles: FileEntry[];
+  fileCount: number;
+};
+
+async function buildDedupedCoverList(
+  filteredFiles: FileEntry[]
+): Promise<DedupedCover[]> {
+  // Group files by their image hash
+  const hashToFiles = new Map<string, FileEntry[]>();
+
+  for (const file of filteredFiles) {
+    if (!hasValidPicture(file.metadata?.picture)) continue;
+
+    const hash = await hashImageData(file.metadata.picture.data);
+    if (!hashToFiles.has(hash)) {
+      hashToFiles.set(hash, []);
+    }
+    hashToFiles.get(hash)!.push(file);
+  }
+
+  // Convert to deduplicated cover list
+  return Array.from(hashToFiles.entries()).map(([hash, sourceFiles]) => ({
+    hash,
+    representativeFile: sourceFiles[0],
+    sourceFiles,
+    fileCount: sourceFiles.length,
+  }));
 }
 
 type ClipboardImageItem = {
@@ -176,6 +208,9 @@ export default function Library() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showFindModal, setShowFindModal] = useState(false);
   const [findFilter, setFindFilter] = useState('');
+  const [dedupedSameAlbumCovers, setDedupedSameAlbumCovers] = useState<DedupedCover[]>([]);
+  const [dedupedOtherCovers, setDedupedOtherCovers] = useState<DedupedCover[]>([]);
+  const [isComputingCovers, setIsComputingCovers] = useState(false);
   const [mobileView, setMobileView] = useState<'tracks' | 'details'>('tracks');
   const [showRenamePanel, setShowRenamePanel] = useState(true);
   const [isMetadataModalOpen, setIsMetadataModalOpen] = useState(false);
@@ -292,8 +327,9 @@ export default function Library() {
   }, [folderHandle, files.length, selectedFile?.path]);
 
   const sortedFiles = useMemo(() => {
-    if (!sortConfig) return files;
-    return [...files].sort((a, b) => {
+    const audioFiles = files.filter(f => !isPlaylistFile(f.name));
+    if (!sortConfig) return audioFiles;
+    return [...audioFiles].sort((a, b) => {
       let aVal = sortConfig.key === 'filename' ? a.name : (a.metadata as any)?.[sortConfig.key];
       let bVal = sortConfig.key === 'filename' ? b.name : (b.metadata as any)?.[sortConfig.key];
       if (!aVal) aVal = '';
@@ -404,6 +440,47 @@ export default function Library() {
     }
   }, []);
 
+  // Compute deduplicated covers when find modal opens or filter changes
+  useEffect(() => {
+    if (!showFindModal || !metadata || !selectedFile) {
+      setDedupedSameAlbumCovers([]);
+      setDedupedOtherCovers([]);
+      return;
+    }
+
+    const computeCovers = async () => {
+      setIsComputingCovers(true);
+      try {
+        // Filter same album covers
+        const sameAlbumFiles = files.filter(f =>
+          hasValidPicture(f.metadata?.picture) &&
+          f.name !== selectedFile.name &&
+          (!findFilter || f.name.toLowerCase().includes(findFilter.toLowerCase())) &&
+          f.metadata?.album === metadata.album
+        );
+
+        // Filter other covers
+        const otherFiles = files.filter(f =>
+          hasValidPicture(f.metadata?.picture) &&
+          f.name !== selectedFile.name &&
+          (!findFilter || f.name.toLowerCase().includes(findFilter.toLowerCase())) &&
+          f.metadata?.album !== metadata.album
+        );
+
+        // Build deduplicated lists
+        const sameAlbumDeduped = await buildDedupedCoverList(sameAlbumFiles);
+        const otherDeduped = await buildDedupedCoverList(otherFiles);
+
+        setDedupedSameAlbumCovers(sameAlbumDeduped);
+        setDedupedOtherCovers(otherDeduped);
+      } finally {
+        setIsComputingCovers(false);
+      }
+    };
+
+    computeCovers();
+  }, [showFindModal, findFilter, files, selectedFile, metadata]);
+
   const handleOpenFolder = async () => {
     try {
       const selection = await openDirectory();
@@ -419,14 +496,17 @@ export default function Library() {
         ? await scanDirectoryForAudio(selection.handle)
         : scanFilesForAudio(selection.files);
 
+      // Filter out playlists - only keep audio files
+      const audioFiles = foundFiles.filter(f => isAudioFile(f.name));
+
       setIsReadOnlyImport(selection.mode === 'files');
       setFolderLabel(selection.mode === 'directory'
         ? selection.handle.name
-        : (foundFiles[0]?.path.split('/')[0] || 'Imported Folder'));
+        : (audioFiles[0]?.path.split('/')[0] || 'Imported Folder'));
       setFolderHandle(selection.mode === 'directory' ? selection.handle : null);
-      setFiles(foundFiles, { preserveMetadata: false, preserveEditedState: true });
-      if (foundFiles.length > 0) {
-        await handleSelectFile(foundFiles[0]);
+      setFiles(audioFiles, { preserveMetadata: false, preserveEditedState: true });
+      if (audioFiles.length > 0) {
+        await handleSelectFile(audioFiles[0]);
       }
     } catch (e) {
       console.error(e);
@@ -448,7 +528,9 @@ export default function Library() {
         ? await scanDirectoryForAudio(folderHandle)
         : scanFilesForAudio(files.map((entry) => entry.file).filter(Boolean) as File[]);
 
-      const strippedFiles = sourceFiles.map(({ metadata: _metadata, ...rest }) => ({ ...rest }));
+      // Filter out playlists - only keep audio files
+      const audioFiles = sourceFiles.filter(f => isAudioFile(f.name));
+      const strippedFiles = audioFiles.map(({ metadata: _metadata, ...rest }) => ({ ...rest }));
       setFiles(strippedFiles, { preserveMetadata: false, preserveEditedState: true });
 
       let processed = 0;
@@ -678,11 +760,11 @@ export default function Library() {
     setSaveMessage(null);
 
     try {
-      const ext = selectedFile.name.split('.').pop()?.toLowerCase();
-      if (ext !== 'mp3') {
-        setSaveMessage('Error: Only MP3 files supported for saving.');
+      if (!canWriteMetadataForFileName(selectedFile.name)) {
+        const extension = selectedFile.name.split('.').pop()?.toUpperCase() || 'This format';
+        setSaveMessage(`Error: ${extension} is currently read-only for metadata writing.`);
         setIsSaving(false);
-        setTimeout(() => setSaveMessage(null), 3000);
+        setTimeout(() => setSaveMessage(null), 4000);
         return;
       }
 
@@ -1621,18 +1703,22 @@ export default function Library() {
               <div>
                 <h4 className="text-sm font-medium mb-2">Same album</h4>
                 <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
-                  {files.filter(f => hasValidPicture(f.metadata?.picture) && f.name !== selectedFile?.name && (!findFilter || f.name.toLowerCase().includes(findFilter.toLowerCase())) && f.metadata?.album === metadata?.album).map(f => (
-                    <div key={f.path} className="rounded-lg border p-2 flex flex-col items-center gap-2 min-w-0">
+                  {isComputingCovers ? (
+                    <div className="col-span-full text-center py-4 text-sm text-muted-foreground">Computing covers...</div>
+                  ) : dedupedSameAlbumCovers.length === 0 ? (
+                    <div className="col-span-full text-center py-4 text-sm text-muted-foreground">No covers found</div>
+                  ) : dedupedSameAlbumCovers.map(cover => (
+                    <div key={cover.hash} className="rounded-lg border p-2 flex flex-col items-center gap-2 min-w-0">
                       <div className="w-20 h-20 overflow-hidden rounded-md bg-muted/30">
                         <CoverThumb
-                          picture={f.metadata?.picture}
-                          alt={f.name + ' cover'}
+                          picture={cover.representativeFile.metadata?.picture}
+                          alt={cover.representativeFile.name + ' cover'}
                           className="w-full h-full object-contain"
-                          onLoadError={() => removeInvalidPicture(f.path, 'find-same-album')}
+                          onLoadError={() => removeInvalidPicture(cover.representativeFile.path, 'find-same-album')}
                         />
                       </div>
-                      <div className="text-[11px] leading-4 text-center line-clamp-2 w-full" title={f.name}>{f.name}</div>
-                      <button onClick={() => applyCoverFromFile(f)} className="mt-1 rounded-md px-2 py-1 bg-background/80">Apply</button>
+                      <div className="text-[11px] leading-4 text-center line-clamp-2 w-full" title={cover.representativeFile.name}>{cover.representativeFile.name} {cover.fileCount > 1 && <span className="text-xs text-muted-foreground">({cover.fileCount})</span>}</div>
+                      <button onClick={() => applyCoverFromFile(cover.representativeFile)} className="mt-1 rounded-md px-2 py-1 bg-background/80">Apply</button>
                     </div>
                   ))}
                 </div>
@@ -1640,18 +1726,20 @@ export default function Library() {
               <div>
                 <h4 className="text-sm font-medium mb-2">Other covers</h4>
                 <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
-                  {files.filter(f => hasValidPicture(f.metadata?.picture) && f.name !== selectedFile?.name && (!findFilter || f.name.toLowerCase().includes(findFilter.toLowerCase())) && f.metadata?.album !== metadata?.album).map(f => (
-                    <div key={f.path} className="rounded-lg border p-2 flex flex-col items-center gap-2 min-w-0">
+                  {dedupedOtherCovers.length === 0 ? (
+                    <div className="col-span-full text-center py-4 text-sm text-muted-foreground">No other covers found</div>
+                  ) : dedupedOtherCovers.map(cover => (
+                    <div key={cover.hash} className="rounded-lg border p-2 flex flex-col items-center gap-2 min-w-0">
                       <div className="w-16 h-16 overflow-hidden rounded-md bg-muted/30">
                         <CoverThumb
-                          picture={f.metadata?.picture}
-                          alt={f.name + ' cover'}
+                          picture={cover.representativeFile.metadata?.picture}
+                          alt={cover.representativeFile.name + ' cover'}
                           className="w-full h-full object-contain"
-                          onLoadError={() => removeInvalidPicture(f.path, 'find-other-covers')}
+                          onLoadError={() => removeInvalidPicture(cover.representativeFile.path, 'find-other-covers')}
                         />
                       </div>
-                      <div className="text-[11px] leading-4 text-center line-clamp-2 w-full" title={f.name}>{f.name}</div>
-                      <button onClick={() => applyCoverFromFile(f)} className="mt-1 rounded-md px-2 py-1 bg-background/80">Apply</button>
+                      <div className="text-[11px] leading-4 text-center line-clamp-2 w-full" title={cover.representativeFile.name}>{cover.representativeFile.name} {cover.fileCount > 1 && <span className="text-xs text-muted-foreground">({cover.fileCount})</span>}</div>
+                      <button onClick={() => applyCoverFromFile(cover.representativeFile)} className="mt-1 rounded-md px-2 py-1 bg-background/80">Apply</button>
                     </div>
                   ))}
                 </div>

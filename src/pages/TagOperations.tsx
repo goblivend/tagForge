@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { Tags, Loader2, RefreshCw, AlertTriangle } from "lucide-react";
 import { useAppStore, type FileEntry } from "../store";
 import { checkPermission, getFileFromEntry } from "../services/fsAccess";
-import { readMetadata, writeMetadata, type AudioTags } from "../services/metadata";
+import { canWriteMetadataForFileName, readMetadata, writeMetadata, type AudioTags } from "../services/metadata";
 import { computeAlbumArtistsByAlbum } from "../lib/albumArtists";
 import {
     findPresetByGeneratedName,
@@ -51,8 +51,8 @@ function normalizeTagValue(value: string | undefined | null) {
     return (value || "").trim();
 }
 
-function isMp3File(entry: FileEntry) {
-    return entry.name.toLowerCase().endsWith(".mp3");
+function isMetadataWritableFile(entry: FileEntry) {
+    return canWriteMetadataForFileName(entry.name);
 }
 
 function hasCoreMetadata(entry: FileEntry) {
@@ -144,7 +144,7 @@ export default function TagOperations() {
         if (!source) return [];
 
         return files.filter((file) => {
-            if (!isMp3File(file)) return false;
+            if (!isMetadataWritableFile(file)) return false;
             const value = normalizeTagValue(file.metadata?.[activeField] as string | undefined);
             return value === source;
         });
@@ -157,7 +157,7 @@ export default function TagOperations() {
     const indexAllMetadata = async () => {
         if (isIndexing || files.length === 0) return;
 
-        const targets = useAppStore.getState().files.filter((entry) => isMp3File(entry) && !hasCoreMetadata(entry));
+        const targets = useAppStore.getState().files.filter((entry) => canWriteMetadataForFileName(entry.name) && !hasCoreMetadata(entry));
         if (targets.length === 0) return;
 
         setIsIndexing(true);
@@ -441,7 +441,7 @@ export default function TagOperations() {
             for (const sourcePath of candidatePaths) {
                 const current = workingFiles.find((entry) => entry.path === sourcePath);
 
-                if (!current || !isMp3File(current)) {
+                if (!current || !isMetadataWritableFile(current)) {
                     processed += 1;
                     setRunProgress({ processed, total: candidatePaths.length });
                     continue;
@@ -751,8 +751,8 @@ export default function TagOperations() {
                                 onClick={() => setOldValue(entry.value)}
                                 disabled={isRunning}
                                 className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left text-sm transition-colors ${oldValue === entry.value
-                                        ? "border-primary/50 bg-primary/10 text-foreground"
-                                        : "border-border/70 bg-background/70 text-muted-foreground hover:bg-accent/70 hover:text-foreground"
+                                    ? "border-primary/50 bg-primary/10 text-foreground"
+                                    : "border-border/70 bg-background/70 text-muted-foreground hover:bg-accent/70 hover:text-foreground"
                                     }`}
                             >
                                 <span className="truncate">{entry.value}</span>

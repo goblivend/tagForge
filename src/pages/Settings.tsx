@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useAppStore } from "../store";
+import { getFormatLegendItems } from "../services/metadata";
 
 export default function Settings() {
   const { filenamePresets, addFilenamePreset, removeFilenamePreset, updateFilenamePreset, moveFilenamePreset } = useAppStore();
   const [newPresetName, setNewPresetName] = useState("");
   const [newPresetFormat, setNewPresetFormat] = useState("");
+  const formatLegendItems = useMemo(() => getFormatLegendItems(), []);
 
   const handleAddPreset = () => {
     if (!newPresetName.trim() || !newPresetFormat.trim()) return;
@@ -129,6 +131,44 @@ export default function Settings() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="panel max-w-2xl space-y-4 rounded-xl p-6">
+        <div>
+          <h3 className="mb-4 border-b border-border/70 pb-2 text-lg font-medium">Supported Audio Formats</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            These are the audio formats supported in TagForge and their capabilities.
+          </p>
+          <div className="grid gap-2">
+            {formatLegendItems.map(item => (
+              <div key={item.extension} className="flex items-center gap-3 rounded-lg border border-border/60 bg-background/50 px-3 py-2">
+                <span className="font-mono font-semibold text-foreground min-w-[60px]">.{item.extension}</span>
+                <div className="flex flex-wrap gap-2">
+                  {item.canReadMetadata && (
+                    <span className="rounded-md bg-green-500/15 px-2 py-1 text-xs font-medium text-green-600 dark:text-green-400">
+                      Read
+                    </span>
+                  )}
+                  {item.canWriteMetadata && (
+                    <span className="rounded-md bg-blue-500/15 px-2 py-1 text-xs font-medium text-blue-600 dark:text-blue-400">
+                      Write
+                    </span>
+                  )}
+                  {item.playlistOnly && (
+                    <span className="rounded-md bg-purple-500/15 px-2 py-1 text-xs font-medium text-purple-600 dark:text-purple-400">
+                      Playlist
+                    </span>
+                  )}
+                  {!item.canReadMetadata && !item.canWriteMetadata && !item.playlistOnly && (
+                    <span className="rounded-md bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
+                      Not supported
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>

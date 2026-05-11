@@ -5,11 +5,38 @@ export type OpenLibrarySource =
   | { mode: 'files'; files: File[] }
   | null;
 
-const SUPPORTED_AUDIO_EXTENSIONS = ['.mp3', '.m4a', '.flac', '.wav'];
+const AUDIO_ONLY_EXTENSIONS = [
+  '.mp3',
+  '.m4a',
+  '.m4b',
+  '.m4p',
+  '.flac',
+  '.wav',
+  '.ogg',
+  '.opus',
+  '.aac',
+];
+
+const PLAYLIST_EXTENSIONS = [
+  '.m3u',
+  '.m3u8',
+];
+
+const SUPPORTED_AUDIO_EXTENSIONS = [...AUDIO_ONLY_EXTENSIONS, ...PLAYLIST_EXTENSIONS];
 
 function isSupportedAudioFile(name: string) {
   const lowerName = name.toLowerCase();
   return SUPPORTED_AUDIO_EXTENSIONS.some(extension => lowerName.endsWith(extension));
+}
+
+export function isAudioFile(name: string): boolean {
+  const lowerName = name.toLowerCase();
+  return AUDIO_ONLY_EXTENSIONS.some(extension => lowerName.endsWith(extension));
+}
+
+export function isPlaylistFilePath(path: string): boolean {
+  const lowerPath = path.toLowerCase();
+  return PLAYLIST_EXTENSIONS.some(extension => lowerPath.endsWith(extension));
 }
 
 export async function openDirectory(): Promise<OpenLibrarySource> {
@@ -90,6 +117,36 @@ export function scanFilesForAudio(files: File[]): FileEntry[] {
       path: file.webkitRelativePath || file.name,
       name: file.name,
     }));
+}
+
+export async function findPlaylistsInDirectory(
+  dirHandle: FileSystemDirectoryHandle,
+  path: string = ""
+): Promise<FileEntry[]> {
+  const playlists: FileEntry[] = [];
+
+  try {
+    for await (const entry of (dirHandle as any).values()) {
+      const fullPath = path ? `${path}/${entry.name}` : entry.name;
+
+      if (entry.kind === 'file') {
+        if (isPlaylistFilePath(entry.name)) {
+          playlists.push({
+            handle: entry as FileSystemFileHandle,
+            path: fullPath,
+            name: entry.name,
+          });
+        }
+      } else if (entry.kind === 'directory') {
+        const subPlaylists = await findPlaylistsInDirectory(entry as FileSystemDirectoryHandle, fullPath);
+        playlists.push(...subPlaylists);
+      }
+    }
+  } catch (error) {
+    console.error("Error finding playlists", error);
+  }
+
+  return playlists;
 }
 
 export async function getFileFromEntry(entry: FileEntry): Promise<File> {
