@@ -214,6 +214,7 @@ export default function Library() {
   const [mobileView, setMobileView] = useState<'tracks' | 'details'>('tracks');
   const [showRenamePanel, setShowRenamePanel] = useState(true);
   const [isMetadataModalOpen, setIsMetadataModalOpen] = useState(false);
+  const [isQuickMatchMode, setIsQuickMatchMode] = useState(false);
   const [isReadOnlyImport, setIsReadOnlyImport] = useState(false);
   const [folderLabel, setFolderLabel] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -224,6 +225,7 @@ export default function Library() {
   const [showCropModal, setShowCropModal] = useState(false);
   const cropContainerRef = React.useRef<HTMLDivElement | null>(null);
   const cropImageRef = React.useRef<HTMLImageElement | null>(null);
+  const selectionHandledRef = React.useRef<string | null>(null);
   const [cropRect, setCropRect] = useState({ x: 80, y: 80, width: 220, height: 220 });
   const [cropImageUrl, setCropImageUrl] = useState<string | null>(null);
   const [cropImageReady, setCropImageReady] = useState(false);
@@ -440,6 +442,15 @@ export default function Library() {
     }
   }, []);
 
+  const getNextFileAfter = (currentPath: string) => {
+    const currentIndex = sortedFiles.findIndex((file) => file.path === currentPath);
+    if (currentIndex < 0 || currentIndex >= sortedFiles.length - 1) {
+      return null;
+    }
+
+    return sortedFiles[currentIndex + 1] || null;
+  };
+
   // Compute deduplicated covers when find modal opens or filter changes
   useEffect(() => {
     if (!showFindModal || !metadata || !selectedFile) {
@@ -487,6 +498,7 @@ export default function Library() {
       if (!selection) return;
 
       setScanning(true);
+      setIsQuickMatchMode(false);
       setSelectedFile(null);
       setMetadata(null);
       setMobileView('tracks');
@@ -595,6 +607,9 @@ export default function Library() {
   }, [metadata, selectedFile?.path, selectedFile, files]);
 
   const handleSelectFile = async (file: FileEntry) => {
+    // mark this selection as intentionally handled so the global-selected-file effect
+    // does not re-run the same logic twice when we call handleSelectFile directly.
+    selectionHandledRef.current = file.path;
     setSelectedFile(file);
     setMobileView('details');
     setShowRenamePanel(true);
@@ -631,8 +646,28 @@ export default function Library() {
       setMetadata(null);
     } finally {
       setIsReading(false);
+      // clear the handled flag after we've finished processing the selection
+      if (selectionHandledRef.current === file.path) selectionHandledRef.current = null;
     }
   };
+
+  // Ensure selections coming from other components (e.g. AudioPlayer) trigger
+  // the same read-and-set-metadata flow. We guard with `selectionHandledRef`
+  // to avoid double-handling when `handleSelectFile` itself set the selected file.
+  useEffect(() => {
+    if (!selectedFile) {
+      setMetadata(null);
+      return;
+    }
+
+    if (selectionHandledRef.current === selectedFile.path) {
+      // already handled by local call to handleSelectFile
+      selectionHandledRef.current = null;
+      return;
+    }
+
+    void handleSelectFile(selectedFile);
+  }, [selectedFile?.path]);
 
   const handleChange = (field: keyof AudioTags, value: any) => {
     if (metadata) {
@@ -723,7 +758,7 @@ export default function Library() {
   const handleApplyMetadata = (newTags: Partial<AudioTags>) => {
     if (!metadata) return;
 
-    setMetadata({
+    const mergedMetadata: AudioTags = {
       ...metadata,
       title: newTags.title !== undefined ? newTags.title : metadata.title,
       artist: newTags.artist !== undefined ? newTags.artist : metadata.artist,
@@ -732,17 +767,75 @@ export default function Library() {
       date: newTags.date !== undefined ? newTags.date : metadata.date,
       genre: newTags.genre !== undefined ? newTags.genre : metadata.genre,
       picture: newTags.picture !== undefined ? newTags.picture : metadata.picture
-    });
+    };
+
+    setMetadata(mergedMetadata);
 
     if (selectedFile) {
       updateFileMetadata(selectedFile.path, {
-        title: newTags.title,
-        artist: newTags.artist,
-        album: newTags.album,
-        albumArtist: newTags.albumArtist,
-        genre: newTags.genre,
+        title: mergedMetadata.title,
+        artist: mergedMetadata.artist,
+        album: mergedMetadata.album,
+        albumArtist: mergedMetadata.albumArtist,
+        date: mergedMetadata.date,
+        genre: mergedMetadata.genre,
         ...(newTags.picture !== undefined ? { picture: newTags.picture } : {})
       });
+
+      if (isQuickMatchMode) {
+        void (async () => {
+          await saveMetadataToDisk(selectedFile, mergedMetadata);
+        })();
+      }
+    }
+  };
+
+  const saveMetadataToDisk = async (targetFile: FileEntry, tags: AudioTags) => {
+    if (!targetFile.handle) {
+      setSaveMessage('Read-only browser import: saving is not available here. Use Chrome or Edge to edit and write tags.');
+      setTimeout(() => setSaveMessage(null), 4000);
+      return false;
+    }
+
+    setIsSaving(true);
+    setSaveMessage(null);
+
+    try {
+      if (!canWriteMetadataForFileName(targetFile.name)) {
+        const extension = targetFile.name.split('.').pop()?.toUpperCase() || 'This format';
+        setSaveMessage(`Error: ${extension} is currently read-only for metadata writing.`);
+        setTimeout(() => setSaveMessage(null), 4000);
+        return false;
+      }
+
+      const hasPerm = await checkPermission(targetFile.handle, true);
+      if (!hasPerm) {
+        setSaveMessage('Error: Permission denied.');
+        setTimeout(() => setSaveMessage(null), 4000);
+        return false;
+      }
+
+      const domFile = await getFileFromEntry(targetFile);
+      const saveResult = await writeMetadata(domFile, targetFile.handle, tags);
+      if (!saveResult.success) {
+        setSaveMessage(`Failed to save metadata: ${saveResult.error}`);
+        setTimeout(() => setSaveMessage(null), 4000);
+        return false;
+      }
+
+      addRecentMetadata(tags);
+      markFileAsEdited(targetFile.path);
+      updateFileMetadata(targetFile.path, tags);
+      setSaveMessage('Saved successfully!');
+      setTimeout(() => setSaveMessage(null), 3000);
+      return true;
+    } catch (e) {
+      console.error('Error saving:', e);
+      setSaveMessage('Error saving metadata.');
+      setTimeout(() => setSaveMessage(null), 3000);
+      return false;
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -750,45 +843,83 @@ export default function Library() {
     if (e) e.preventDefault();
     if (!selectedFile || !metadata) return;
 
-    if (!selectedFile.handle) {
-      setSaveMessage('Read-only browser import: saving is not available here. Use Chrome or Edge to edit and write tags.');
-      setTimeout(() => setSaveMessage(null), 4000);
-      return;
-    }
+    await saveMetadataToDisk(selectedFile, metadata);
+  };
 
-    setIsSaving(true);
-    setSaveMessage(null);
+  const handlePresetClick = async (preset: (typeof filenamePresets)[number]) => {
+    if (!selectedFile || !metadata || isSaving) return;
+
+    const preview = getPreviewNameForPreset(preset.format, metadata, selectedFile.name);
+    if (!preview) return;
+    if (!isQuickMatchMode && preview === selectedFile.name) return;
+
+    const nextTrack = isQuickMatchMode ? getNextFileAfter(selectedFile.path) : null;
+    const targetFile = selectedFile;
+    const ext = targetFile.name.split('.').pop() || 'mp3';
+    const nextName = preview.endsWith(`.${ext}`) ? preview : `${preview}.${ext}`;
 
     try {
-      if (!canWriteMetadataForFileName(selectedFile.name)) {
-        const extension = selectedFile.name.split('.').pop()?.toUpperCase() || 'This format';
-        setSaveMessage(`Error: ${extension} is currently read-only for metadata writing.`);
-        setIsSaving(false);
-        setTimeout(() => setSaveMessage(null), 4000);
-        return;
+      setIsSaving(true);
+
+      if (!targetFile.handle) {
+        throw new Error('Read-only browser import: file renaming is not available in this browser.');
       }
 
-      const hasPerm = await checkPermission(selectedFile.handle, true);
+      const hasPerm = await checkPermission(targetFile.handle, true);
       if (!hasPerm) {
-        setSaveMessage('Error: Permission denied.');
+        setSaveMessage('Permission denied for rename.');
+        setTimeout(() => setSaveMessage(null), 3000);
         return;
       }
 
-      const domFile = await getFileFromEntry(selectedFile);
-      const saveResult = await writeMetadata(domFile, selectedFile.handle, metadata);
-      if (saveResult.success) {
-        addRecentMetadata(metadata);
-        markFileAsEdited(selectedFile.path);
-        updateFileMetadata(selectedFile.path, metadata);
-        setSaveMessage('Saved successfully!');
-        setTimeout(() => setSaveMessage(null), 3000);
-      } else {
-        setSaveMessage(`Failed to save metadata: ${saveResult.error}`);
-        setTimeout(() => setSaveMessage(null), 4000);
+      if (nextName !== targetFile.name) {
+        const moveHandle = targetFile.handle as FileSystemFileHandle & {
+          move?: (newName: string) => Promise<void> | void;
+        };
+
+        if (typeof moveHandle.move !== 'function') {
+          throw new Error('This browser does not support file renaming via the File System Access API.');
+        }
+
+        await moveHandle.move(nextName);
+
+        const renamedPath = getRenamedPathForFile(targetFile.path, nextName);
+        const updatedFile = { ...targetFile, name: nextName, path: renamedPath };
+        setSelectedFile(updatedFile);
+        setFiles(files.map(file => (
+          file.path === targetFile.path
+            ? { ...file, name: nextName, path: renamedPath }
+            : file
+        )));
       }
+
+      if (isQuickMatchMode) {
+        const updatedFile = nextName !== targetFile.name
+          ? { ...targetFile, name: nextName, path: getRenamedPathForFile(targetFile.path, nextName) }
+          : targetFile;
+
+        const saved = await saveMetadataToDisk(updatedFile, metadata);
+        if (!saved) return;
+
+        const message = nextTrack
+          ? (nextName !== targetFile.name ? `Renamed to ${nextName} and advanced to the next track` : 'Saved metadata and advanced to the next track')
+          : (nextName !== targetFile.name ? `Renamed to ${nextName}` : 'Saved metadata');
+
+        if (nextTrack) {
+          await handleSelectFile(nextTrack);
+        }
+
+        setSaveMessage(message);
+        setTimeout(() => setSaveMessage(null), 3000);
+        return;
+      }
+
+      setSaveMessage(`Renamed to ${nextName}`);
+      setTimeout(() => setSaveMessage(null), 3000);
     } catch (e) {
-      console.error("Error saving:", e);
-      setSaveMessage('Error saving metadata.');
+      console.error('Rename error', e);
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      setSaveMessage(`Rename failed: ${errorMessage}`);
       setTimeout(() => setSaveMessage(null), 3000);
     } finally {
       setIsSaving(false);
@@ -1087,6 +1218,23 @@ export default function Library() {
             <Keyboard size={16} /> Shortcuts
           </button>
 
+          <button
+            onClick={() => setIsQuickMatchMode((prev) => {
+              const next = !prev;
+              if (next) {
+                setMobileView('details');
+              }
+              return next;
+            })}
+            className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium shadow-[var(--panel-shadow)] transition-[transform,background-color,color] hover:-translate-y-0.5 ${isQuickMatchMode
+              ? 'border-primary/40 bg-[linear-gradient(135deg,hsl(var(--primary-color)),hsl(var(--primary-dark)))] text-primary-foreground'
+              : 'border-border/70 bg-card/85 text-muted-foreground hover:bg-accent/80 hover:text-accent-foreground'
+              }`}
+            title="Toggle quick match mode"
+          >
+            Quick Match
+          </button>
+
           {folderHandle && (
             <button
               onClick={() => setShowColumnConfig(!showColumnConfig)}
@@ -1151,7 +1299,7 @@ export default function Library() {
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-3">
-          <div className="flex items-center gap-2 lg:hidden">
+          {!isQuickMatchMode && <div className="flex items-center gap-2 lg:hidden">
             <button
               type="button"
               onClick={() => setMobileView('tracks')}
@@ -1173,14 +1321,14 @@ export default function Library() {
             >
               Details
             </button>
-          </div>
+          </div>}
 
           <div className="flex min-h-0 flex-1 flex-col gap-6 lg:flex-row">
             <div className="panel-strong flex h-full w-full overflow-hidden rounded-2xl text-sm">
 
               <div className="flex h-full w-full flex-col lg:flex-row">
                 {/* Left Panel: CSV-like Table */}
-                <div
+                {!isQuickMatchMode && <div
                   className={`order-2 h-full w-full shrink-0 flex-col overflow-hidden border-b border-border/70 bg-background/80 lg:order-1 lg:border-b-0 lg:border-r lg:w-[var(--library-pane-width)] ${mobileView === 'details' ? 'hidden lg:flex' : 'flex'}`}
                   style={{ ['--library-pane-width' as any]: `${leftCollapsed ? 56 : Math.max(250, leftWidth)}px` } as React.CSSProperties}
                 >
@@ -1301,17 +1449,17 @@ export default function Library() {
                       )}
                     </div>
                   </div>
-                </div>
+                </div>}
 
-                <div
+                {!isQuickMatchMode && <div
                   className={`order-2 hidden w-2 shrink-0 cursor-col-resize flex-col items-center justify-center border-x border-border/70 bg-muted/45 transition-colors hover:bg-primary/20 select-none lg:flex ${leftCollapsed ? 'lg:hidden' : ''} ${mobileView === 'details' ? 'lg:flex' : ''}`}
                   onMouseDown={(e) => { e.preventDefault(); setIsDragging(true); }}
                 >
                   <div className="h-10 w-1 rounded-full bg-border" />
-                </div>
+                </div>}
 
                 {/* Right Panel: Editor */}
-                <div className={`order-1 min-w-0 flex-1 flex-col overflow-y-auto bg-card/95 lg:order-3 ${mobileView === 'tracks' ? 'hidden lg:flex' : 'flex'}`}>
+                <div className={`order-1 min-w-0 flex-1 flex-col overflow-y-auto bg-card/95 lg:order-3 ${!isQuickMatchMode && mobileView === 'tracks' ? 'hidden lg:flex' : 'flex'}`}>
                   {!selectedFile ? (
                     <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
                       Select a file to edit
@@ -1485,58 +1633,13 @@ export default function Library() {
                                     {filenamePresets.map(preset => {
                                       const preview = getPreviewNameForPreset(preset.format, metadata, selectedFile.name);
                                       const isSame = preview === selectedFile.name;
+                                      const isLocked = !isQuickMatchMode && isSame;
 
                                       return (
                                         <div
                                           key={preset.id}
-                                          className={`flex flex-col gap-2 rounded-xl border p-3 transition-[transform,background-color,border-color,box-shadow] ${isSame ? 'opacity-50 cursor-not-allowed bg-muted/50' : isSaving ? 'opacity-50 cursor-wait bg-background' : 'cursor-pointer bg-background/85 shadow-[var(--panel-shadow)] hover:-translate-y-0.5 hover:border-primary/30 hover:bg-accent/80 hover:shadow-[var(--panel-shadow-lg)]'}`}
-                                          onClick={async () => {
-                                            if (isSame || isSaving || !preview) return;
-
-                                            try {
-                                              setIsSaving(true);
-                                              if (!selectedFile.handle) {
-                                                throw new Error('Read-only browser import: file renaming is not available in this browser.');
-                                              }
-                                              const hasPerm = await checkPermission(selectedFile.handle, true);
-                                              if (!hasPerm) {
-                                                setSaveMessage('Permission denied for rename.');
-                                                setTimeout(() => setSaveMessage(null), 3000);
-                                                return;
-                                              }
-
-                                              const ext = selectedFile.name.split('.').pop() || 'mp3';
-                                              const newName = preview.endsWith(`.${ext}`) ? preview : `${preview}.${ext}`;
-                                              const moveHandle = selectedFile.handle as FileSystemFileHandle & {
-                                                move?: (newName: string) => Promise<void> | void;
-                                              };
-
-                                              if (typeof moveHandle.move !== 'function') {
-                                                throw new Error('This browser does not support file renaming via the File System Access API.');
-                                              }
-
-                                              await moveHandle.move(newName);
-
-                                              const renamedPath = getRenamedPathForFile(selectedFile.path, newName);
-                                              const updatedFile = { ...selectedFile, name: newName, path: renamedPath };
-                                              setSelectedFile(updatedFile);
-                                              setFiles(files.map(file => (
-                                                file.path === selectedFile.path
-                                                  ? { ...file, name: newName, path: renamedPath }
-                                                  : file
-                                              )));
-
-                                              setSaveMessage(`Renamed to ${newName}`);
-                                              setTimeout(() => setSaveMessage(null), 3000);
-                                            } catch (e) {
-                                              console.error('Rename error', e);
-                                              const errorMessage = e instanceof Error ? e.message : String(e);
-                                              setSaveMessage(`Rename failed: ${errorMessage}`);
-                                              setTimeout(() => setSaveMessage(null), 3000);
-                                            } finally {
-                                              setIsSaving(false);
-                                            }
-                                          }}
+                                          className={`flex flex-col gap-2 rounded-xl border p-3 transition-[transform,background-color,border-color,box-shadow] ${isLocked ? 'opacity-50 cursor-not-allowed bg-muted/50' : isSaving ? 'opacity-50 cursor-wait bg-background' : 'cursor-pointer bg-background/85 shadow-[var(--panel-shadow)] hover:-translate-y-0.5 hover:border-primary/30 hover:bg-accent/80 hover:shadow-[var(--panel-shadow-lg)]'}`}
+                                          onClick={() => void handlePresetClick(preset)}
                                         >
                                           <div className="flex items-center justify-between gap-3">
                                             <span className="text-sm font-medium text-foreground">{preset.name}</span>
@@ -1556,6 +1659,18 @@ export default function Library() {
                           </div>
 
                           <div className="space-y-3 border-t border-border/70 pt-3 lg:border-t-0 lg:pt-0">
+                            {isQuickMatchMode && selectedFile && metadata && (
+                              <MetadataSearchModal
+                                isOpen={isQuickMatchMode}
+                                onClose={() => setIsQuickMatchMode(false)}
+                                initialQuery={metadata?.title || selectedFile?.name?.replace(/\.[^/.]+$/, '') || ''}
+                                onApply={handleApplyMetadata}
+                                syncKey={selectedFile?.path || ''}
+                                inline
+                                closeOnApply={false}
+                                className="max-h-[42vh]"
+                              />
+                            )}
                             <div className="text-sm font-medium text-foreground flex items-center justify-between gap-3">
                               <span>Cover Art</span>
                               <div className="flex flex-wrap items-center gap-1.5 shrink-0 isolate">
@@ -1860,12 +1975,15 @@ export default function Library() {
         </div>
       )}
 
-      <MetadataSearchModal
-        isOpen={isMetadataModalOpen}
-        onClose={() => setIsMetadataModalOpen(false)}
-        initialQuery={metadata?.title || selectedFile?.name?.replace(/\.[^/.]+$/, "") || ""}
-        onApply={handleApplyMetadata}
-      />
+      {!isQuickMatchMode && (
+        <MetadataSearchModal
+          isOpen={isMetadataModalOpen}
+          onClose={() => setIsMetadataModalOpen(false)}
+          initialQuery={metadata?.title || selectedFile?.name?.replace(/\.[^/.]+$/, "") || ""}
+          onApply={handleApplyMetadata}
+          syncKey={selectedFile?.path || ''}
+        />
+      )}
     </div>
   );
 }
